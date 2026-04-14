@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks";
 import Sidebar from "@/components/dashboard/sidebar";
 import Header from "@/components/dashboard/header";
+import OnboardingGuide, { useOnboardingGuide } from "@/components/dashboard/onboarding-guide";
 import { Loader2 } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -12,6 +13,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { isAuthenticated, isLoading } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const onboarding = useOnboardingGuide();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -46,6 +48,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+
+      <OnboardingGuide open={onboarding.show} onDismiss={onboarding.dismiss} />
     </div>
   );
 }

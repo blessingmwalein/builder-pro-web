@@ -171,7 +171,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+
+  // Guard against empty response bodies that would fail JSON.parse
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 // ---- Convenience methods ----
