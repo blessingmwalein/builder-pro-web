@@ -105,7 +105,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         </div>
         {!collapsed && (
           <span className="text-lg font-bold tracking-tight text-sidebar-foreground">
-            BuilderPro
+            ownit2buildit
           </span>
         )}
       </div>

@@ -1,5 +1,5 @@
 // ============================================================
-// BuilderPro — API Client with JWT auth, refresh, tenant scope
+// ownit2buildit — API Client with JWT auth, refresh, tenant scope
 // ============================================================
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3005/api/v1";

@@ -9,7 +9,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary">
             <Building2 className="h-6 w-6 text-sidebar-primary-foreground" />
           </div>
-          <span className="text-xl font-bold tracking-tight">BuilderPro</span>
+          <span className="text-xl font-bold tracking-tight">ownit2buildit</span>
         </div>
 
         <div className="space-y-6">
@@ -40,7 +40,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         <p className="text-xs text-sidebar-foreground/50">
-          &copy; {new Date().getFullYear()} BuilderPro. Built for Zimbabwe &amp; Southern Africa.
+          &copy; {new Date().getFullYear()} ownit2buildit. Built for Zimbabwe &amp; Southern Africa.
         </p>
       </div>
 

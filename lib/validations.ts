@@ -1,5 +1,5 @@
 // ============================================================
-// BuilderPro — Zod validation schemas
+// ownit2buildit — Zod validation schemas
 // ============================================================
 
 import { z } from "zod";

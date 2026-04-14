@@ -51,13 +51,13 @@ export default function LoginPage() {
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
           <Building2 className="h-6 w-6 text-primary-foreground" />
         </div>
-        <span className="text-xl font-bold">BuilderPro</span>
+        <span className="text-xl font-bold">ownit2buildit</span>
       </div>
 
       <Card className="border-0 shadow-none lg:border lg:shadow-sm">
         <CardHeader className="space-y-1 px-0 lg:px-6">
           <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-          <CardDescription>Sign in to your BuilderPro account</CardDescription>
+          <CardDescription>Sign in to your ownit2buildit account</CardDescription>
         </CardHeader>
         <CardContent className="px-0 lg:px-6">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

@@ -1,5 +1,5 @@
 // ============================================================
-// BuilderPro — Core TypeScript Types
+// ownit2buildit — Core TypeScript Types
 // Aligned with NestJS API: http://localhost:3005/api/v1
 // ============================================================
 

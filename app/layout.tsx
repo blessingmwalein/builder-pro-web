@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "BuilderPro — Construction Project Management",
+  title: "ownit2buildit — Construction Project Management",
   description:
     "Premium SaaS platform for construction project management. Manage projects, tasks, finances, teams, and clients — all in one place.",
 };
