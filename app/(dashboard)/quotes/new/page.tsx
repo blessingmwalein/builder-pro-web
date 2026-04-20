@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +9,7 @@ import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
 import { createQuote } from "@/store/slices/quotesSlice";
 import { fetchClients } from "@/store/slices/crmSlice";
 import { fetchProjects } from "@/store/slices/projectsSlice";
+import { fetchSuppliers } from "@/store/slices/materialsSlice";
 import { createQuoteSchema, type CreateQuoteFormData } from "@/lib/validations";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { DatePickerField } from "@/components/shared/date-picker-field";
 import type { LineItemCategory } from "@/types";
+import { fetchElectrosalesDepartments, searchElectrosalesProducts, type ElectrosalesProduct } from "@/lib/electrosales";
 
 const categories: LineItemCategory[] = ["Labour", "Materials", "Equipment", "Subcontractors", "Overheads", "Margin"];
 
@@ -28,10 +31,30 @@ export default function NewQuotePage() {
   const formatCurrency = useFormatCurrency();
   const { clients } = useAppSelector((s) => s.crm);
   const { items: projects } = useAppSelector((s) => s.projects);
+  const { suppliers } = useAppSelector((s) => s.materials);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
+  const [productQueries, setProductQueries] = useState<Record<number, string>>({});
+  const [productResults, setProductResults] = useState<Record<number, ElectrosalesProduct[]>>({});
+  // Parallel map: line-item index -> the Electrosales product chosen for it.
+  // Sent alongside the line item on submit so the backend can upsert a Material
+  // and (on approval) auto-log usage against the project.
+  const [chosenProducts, setChosenProducts] = useState<Record<number, ElectrosalesProduct>>({});
+  const [searchingIndex, setSearchingIndex] = useState<number | null>(null);
+  const [departmentLabels, setDepartmentLabels] = useState<string[]>([]);
 
   useEffect(() => {
     dispatch(fetchClients({ limit: 100 }));
     dispatch(fetchProjects({ limit: 100 }));
+    dispatch(fetchSuppliers({ limit: 200 }));
+
+    void fetchElectrosalesDepartments()
+      .then((items) => {
+        const labels = items
+          .map((item) => item.label || item.name || "")
+          .filter((label): label is string => Boolean(label));
+        setDepartmentLabels(Array.from(new Set(labels)).slice(0, 8));
+      })
+      .catch(() => setDepartmentLabels([]));
   }, [dispatch]);
 
   const {
@@ -60,10 +83,72 @@ export default function NewQuotePage() {
   const subtotal = lineItems.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
   const taxAmount = subtotal * (taxRate / 100);
   const total = subtotal + taxAmount - discountAmount;
+  const selectedSupplier = useMemo(
+    () => suppliers.find((supplier) => supplier.id === selectedSupplierId),
+    [selectedSupplierId, suppliers],
+  );
+
+  function mapProductToCategory(product: ElectrosalesProduct): LineItemCategory {
+    const path = product.breadcrumbs.join(" ").toLowerCase();
+    if (path.includes("paint") || path.includes("plumbing") || path.includes("building") || path.includes("electrical")) {
+      return "Materials";
+    }
+    if (path.includes("tools") || path.includes("equipment")) {
+      return "Equipment";
+    }
+    if (path.includes("service") || path.includes("labour")) {
+      return "Labour";
+    }
+    return "Materials";
+  }
+
+  async function handleProductSearch(index: number, query: string) {
+    setProductQueries((current) => ({ ...current, [index]: query }));
+    if (query.trim().length < 2) {
+      setProductResults((current) => ({ ...current, [index]: [] }));
+      return;
+    }
+
+    setSearchingIndex(index);
+    try {
+      const items = await searchElectrosalesProducts(query, 8);
+      const filtered = selectedSupplier
+        ? items.filter((item) => item.supplierName.toLowerCase().includes(selectedSupplier.name.toLowerCase()))
+        : items;
+      setProductResults((current) => ({ ...current, [index]: filtered }));
+    } finally {
+      setSearchingIndex(null);
+    }
+  }
+
+  function applyProduct(index: number, product: ElectrosalesProduct) {
+    const description = `${product.name}${product.sku ? ` (${product.sku})` : ""}`;
+    setValue(`lineItems.${index}.description`, description, { shouldValidate: true });
+    setValue(`lineItems.${index}.unitPrice`, product.price, { shouldValidate: true });
+    setValue(`lineItems.${index}.category`, mapProductToCategory(product), { shouldValidate: true });
+    setProductQueries((current) => ({ ...current, [index]: product.name }));
+    setProductResults((current) => ({ ...current, [index]: [] }));
+    setChosenProducts((current) => ({ ...current, [index]: product }));
+  }
 
   async function onSubmit(data: CreateQuoteFormData) {
     try {
-      await dispatch(createQuote(data)).unwrap();
+      // Augment line items with Electrosales product snapshots so the backend
+      // can upsert Materials + log usage on approval.
+      const payload = {
+        ...data,
+        lineItems: data.lineItems.map((item, i) => {
+          const product = chosenProducts[i];
+          if (!product) return item;
+          return {
+            ...item,
+            externalSource: "electrosales",
+            externalProductId: String(product.id),
+            externalProduct: product,
+          };
+        }),
+      };
+      await dispatch(createQuote(payload as CreateQuoteFormData)).unwrap();
       router.push("/quotes");
     } catch {
       // Error handled by Redux
@@ -88,7 +173,10 @@ export default function NewQuotePage() {
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Client *</Label>
-              <Select onValueChange={(v: string | null) => setValue("clientId", v ?? "")}>
+              <Select
+                value={watch("clientId") || undefined}
+                onValueChange={(v: string | null) => setValue("clientId", v ?? "", { shouldValidate: true })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select client" />
                 </SelectTrigger>
@@ -103,7 +191,10 @@ export default function NewQuotePage() {
 
             <div className="space-y-2">
               <Label>Project (optional)</Label>
-              <Select onValueChange={(v: string | null) => setValue("projectId", v ?? "")}>
+              <Select
+                value={watch("projectId") || undefined}
+                onValueChange={(v: string | null) => setValue("projectId", v ?? "")}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Link to project" />
                 </SelectTrigger>
@@ -123,13 +214,53 @@ export default function NewQuotePage() {
 
             <div className="space-y-2">
               <Label>Issue Date *</Label>
-              <Input type="date" {...register("issueDate")} />
+              <DatePickerField
+                value={watch("issueDate")}
+                onChange={(value) => setValue("issueDate", value, { shouldValidate: true })}
+              />
             </div>
 
             <div className="space-y-2">
               <Label>Expiry Date</Label>
-              <Input type="date" {...register("expiryDate")} />
+              <DatePickerField
+                value={watch("expiryDate") || undefined}
+                onChange={(value) => setValue("expiryDate", value, { shouldValidate: true })}
+              />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Supplier & Product Source</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Supplier (optional)</Label>
+              <Select value={selectedSupplierId || undefined} onValueChange={(value: string | null) => setSelectedSupplierId(value ?? "") }>
+                <SelectTrigger>
+                  <SelectValue placeholder="All suppliers" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 rounded-md border bg-muted/20 p-3 text-sm">
+              <p className="font-medium">Selected Supplier</p>
+              <p>{selectedSupplier?.name || "No supplier selected"}</p>
+              {selectedSupplier?.phone ? <p className="text-muted-foreground">{selectedSupplier.phone}</p> : null}
+              {selectedSupplier?.email ? <p className="text-muted-foreground">{selectedSupplier.email}</p> : null}
+            </div>
+            {departmentLabels.length > 0 ? (
+              <div className="sm:col-span-2 text-xs text-muted-foreground">
+                Suggested departments: {departmentLabels.join(" | ")}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -168,7 +299,39 @@ export default function NewQuotePage() {
                 </div>
                 <div className="sm:col-span-4">
                   {index === 0 && <Label className="text-xs">Description</Label>}
-                  <Input className="h-9 text-sm" placeholder="Description" {...register(`lineItems.${index}.description`)} />
+                  <div className="space-y-2">
+                    <Input className="h-9 text-sm" placeholder="Description" {...register(`lineItems.${index}.description`)} />
+                    <div className="relative">
+                      <Input
+                        className="h-8 text-xs"
+                        placeholder="Search supplier product"
+                        value={productQueries[index] || ""}
+                        onChange={(event) => {
+                          void handleProductSearch(index, event.target.value);
+                        }}
+                      />
+                      {searchingIndex === index ? (
+                        <p className="mt-1 text-[11px] text-muted-foreground">Searching products...</p>
+                      ) : null}
+                      {productResults[index]?.length ? (
+                        <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded-md border bg-background p-1 shadow-sm">
+                          {productResults[index].map((product) => (
+                            <button
+                              key={`${product.id}`}
+                              type="button"
+                              className="flex w-full flex-col rounded-sm px-2 py-1.5 text-left hover:bg-muted"
+                              onClick={() => applyProduct(index, product)}
+                            >
+                              <span className="text-xs font-medium">{product.name}</span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {product.supplierName} | {product.sku || "No SKU"} | {formatCurrency(product.price)}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
                 <div className="sm:col-span-2">
                   {index === 0 && <Label className="text-xs">Qty</Label>}
@@ -191,7 +354,20 @@ export default function NewQuotePage() {
                     variant="ghost"
                     size="sm"
                     className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => fields.length > 1 && remove(index)}
+                    onClick={() => {
+                      if (fields.length <= 1) return;
+                      remove(index);
+                      setProductQueries((current) => {
+                        const next = { ...current };
+                        delete next[index];
+                        return next;
+                      });
+                      setProductResults((current) => {
+                        const next = { ...current };
+                        delete next[index];
+                        return next;
+                      });
+                    }}
                     disabled={fields.length <= 1}
                   >
                     <Trash2 className="h-3.5 w-3.5" />

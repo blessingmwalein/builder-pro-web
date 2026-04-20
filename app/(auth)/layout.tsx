@@ -103,7 +103,12 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </svg>
 
         <div className="relative z-10 flex min-h-full items-center justify-center px-6 py-12">
-          <div className="w-full max-w-lg">{children}</div>
+          {/*
+            Container is wide enough for the 3-up plans grid on /subscription.
+            Narrower pages (login, register, accept-invite) opt back in to a
+            tighter width via their own `max-w-*` wrapper.
+          */}
+          <div className="w-full max-w-5xl">{children}</div>
         </div>
       </div>
     </div>

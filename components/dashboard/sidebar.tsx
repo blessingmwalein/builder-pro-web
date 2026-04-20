@@ -61,7 +61,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Resources",
     items: [
-      { label: "Clients", href: "/crm", icon: UserCircle, permissions: ["crm.*", "crm.view"] },
+      { label: "Customer Relationship Management (CRM)", href: "/crm", icon: UserCircle, permissions: ["crm.*", "crm.view"] },
       { label: "Employees", href: "/employees", icon: Users, permissions: ["employees.*", "employees.manage"] },
       { label: "Materials", href: "/materials", icon: Package, permissions: ["materials.*", "materials.log"] },
     ],
@@ -113,7 +113,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
       <Separator className="shrink-0 bg-sidebar-border" />
 
       {/* Scrollable nav */}
-      <div className="flex-1 min-h-0 overflow-y-auto py-2">
+      <div className="flex-1 min-h-0 overflow-y-auto py-2 sidebar-scroll">
         <nav className="space-y-1 px-2">
           {navSections.map((section) => (
             <SidebarSection
@@ -248,14 +248,14 @@ function NavLink({
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
         isActive
-          ? "bg-sidebar-accent text-sidebar-primary"
+          ? "bg-sidebar-accent text-white"
           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         collapsed && "justify-center px-2"
       )}
       title={collapsed ? item.label : undefined}
     >
-      <item.icon className={cn("h-[18px] w-[18px] shrink-0", isActive && "text-sidebar-primary")} />
-      {!collapsed && <span>{item.label}</span>}
+      <item.icon className={cn("h-[18px] w-[18px] shrink-0", isActive && "text-white")} />
+      {!collapsed && <span className="leading-snug break-words">{item.label}</span>}
     </Link>
   );
 }

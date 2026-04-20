@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Building2, Loader2, Eye, EyeOff } from "lucide-react";
 import { registerSchema } from "@/lib/validations";
@@ -16,15 +16,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PasswordStrength } from "@/components/shared/password-strength";
 
-const INDUSTRIES = [
-  "Construction",
-  "Engineering",
-  "Architecture",
-  "Property Development",
-  "Renovation",
-  "Infrastructure",
-  "Other",
+const INDUSTRIES = ["Residential", "Commercial", "Industrial"];
+
+const COMPANY_SIZES = [
+  { value: "SMALL", label: "Small (1–10 staff)" },
+  { value: "MEDIUM", label: "Medium (11–50 staff)" },
+  { value: "LARGE", label: "Large (50+ staff)" },
 ];
 
 export default function RegisterPage() {
@@ -39,19 +38,23 @@ export default function RegisterPage() {
     handleSubmit,
     setValue,
     trigger,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
-      industry: "Construction",
-      planCode: "STARTER",
+      industry: "Residential",
+      companySize: "LARGE",
+      planCode: "SMALL_BUSINESS",
     },
   });
+
+  const passwordValue = useWatch({ control, name: "password" }) ?? "";
 
   async function goNextStep() {
     const valid = await trigger(
       step === 1
-        ? ["companyName", "industry"]
+        ? ["companyName", "industry", "companySize"]
         : ["firstName", "lastName", "email"]
     );
     if (valid) setStep(step + 1);
@@ -61,11 +64,11 @@ export default function RegisterPage() {
     setError(null);
     try {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { confirmPassword, ...rest } = data;
+      const { confirmPassword, companySize, ...rest } = data;
       const payload = {
         ...rest,
-        industry: rest.industry || "Construction",
-        planCode: rest.planCode || "STARTER",
+        industry: rest.industry || "Residential",
+        planCode: rest.planCode || "SMALL_BUSINESS",
       };
       await dispatch(registerAction(payload)).unwrap();
       router.push("/subscription");
@@ -76,7 +79,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <>
+    <div className="mx-auto w-full max-w-lg">
       <div className="mb-8 flex items-center gap-3 lg:hidden">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
           <Building2 className="h-6 w-6 text-primary-foreground" />
@@ -88,7 +91,7 @@ export default function RegisterPage() {
         <CardHeader className="space-y-1 px-0 lg:px-6">
           <CardTitle className="text-2xl font-bold">Create your account</CardTitle>
           <CardDescription>
-            Start your 30-day free trial. No credit card required.
+            Start your 2-week free trial. No credit card required.
           </CardDescription>
           {/* Step indicator */}
           <div className="flex gap-2 pt-2">
@@ -119,11 +122,11 @@ export default function RegisterPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Industry</Label>
+                  <Label>Sector / Industry</Label>
                   <Select
-                    defaultValue="Construction"
+                    defaultValue="Residential"
                     onValueChange={(v: string | null) => {
-                      if (v) setValue("industry", v);
+                      if (v) setValue("industry", v as "Residential" | "Commercial" | "Industrial");
                     }}
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -134,6 +137,24 @@ export default function RegisterPage() {
                     </SelectContent>
                   </Select>
                   {errors.industry && <p className="text-xs text-destructive">{errors.industry.message}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Company Size</Label>
+                  <Select
+                    defaultValue="LARGE"
+                    onValueChange={(v: string | null) => {
+                      if (v) setValue("companySize", v as "SMALL" | "MEDIUM" | "LARGE");
+                    }}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {COMPANY_SIZES.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.companySize && <p className="text-xs text-destructive">{errors.companySize.message}</p>}
                 </div>
 
                 <Button type="button" className="w-full" onClick={goNextStep}>
@@ -202,9 +223,7 @@ export default function RegisterPage() {
                     </button>
                   </div>
                   {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
-                  <p className="text-xs text-muted-foreground">
-                    8+ characters, uppercase, number, special character
-                  </p>
+                  <PasswordStrength value={passwordValue} />
                 </div>
 
                 <div className="space-y-2">
@@ -241,6 +260,6 @@ export default function RegisterPage() {
           </div>
         </CardContent>
       </Card>
-    </>
+    </div>
   );
 }

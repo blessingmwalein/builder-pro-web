@@ -44,6 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DatePickerField } from "@/components/shared/date-picker-field";
 
 type BudgetDraftLine = {
   categoryId: string;
@@ -714,7 +715,7 @@ export default function FinancialsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Date</Label>
-                <Input type="date" value={txnDate} onChange={(e) => setTxnDate(e.target.value)} />
+                <DatePickerField value={txnDate} onChange={setTxnDate} />
               </div>
             </div>
 

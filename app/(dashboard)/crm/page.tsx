@@ -87,7 +87,7 @@ export default function CrmPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Clients" description="Manage your client relationships and history.">
+      <PageHeader title="Customer Relationship Management (CRM)" description="Manage your client relationships and history.">
         <Button onClick={() => router.push("/crm/new")}>
           <Plus className="mr-2 h-4 w-4" /> Add Client
         </Button>

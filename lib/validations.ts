@@ -9,10 +9,14 @@ export const loginSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
+export const INDUSTRY_SECTORS = ["Residential", "Commercial", "Industrial"] as const;
+export const COMPANY_SIZE_VALUES = ["SMALL", "MEDIUM", "LARGE"] as const;
+
 export const registerSchema = z.object({
   companyName: z.string().min(2, "Company name is required"),
-  industry: z.string().min(1, "Select an industry").default("Construction"),
-  planCode: z.string().default("STARTER"),
+  industry: z.enum(INDUSTRY_SECTORS).default("Residential"),
+  companySize: z.enum(COMPANY_SIZE_VALUES).default("LARGE"),
+  planCode: z.string().default("SMALL_BUSINESS"),
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Enter a valid email"),

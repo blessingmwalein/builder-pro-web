@@ -40,6 +40,20 @@ export const updateEmployee = createAsyncThunk(
     api.put<Employee>(`/employees/${id}`, data)
 );
 
+export const toggleEmployeeStatus = createAsyncThunk(
+  "employees/toggleStatus",
+  async ({ id, isActive }: { id: string; isActive: boolean }) =>
+    api.put<Employee>(`/employees/${id}/status`, { isActive })
+);
+
+export const deleteEmployee = createAsyncThunk(
+  "employees/delete",
+  async (id: string) => {
+    await api.delete<void>(`/employees/${id}`);
+    return id;
+  }
+);
+
 export const fetchPayrollExport = createAsyncThunk(
   "employees/payrollExport",
   async (params: { from: string; to: string }) =>
@@ -67,6 +81,16 @@ const employeesSlice = createSlice({
         const idx = state.items.findIndex((e) => e.id === payload.id);
         if (idx >= 0) state.items[idx] = payload;
         if (state.current?.id === payload.id) state.current = payload;
+      })
+      .addCase(toggleEmployeeStatus.fulfilled, (state, { payload }) => {
+        const idx = state.items.findIndex((e) => e.id === payload.id);
+        if (idx >= 0) state.items[idx] = payload;
+        if (state.current?.id === payload.id) state.current = payload;
+      })
+      .addCase(deleteEmployee.fulfilled, (state, { payload }) => {
+        state.items = state.items.filter((employee) => employee.id !== payload);
+        state.total = Math.max(0, state.total - 1);
+        if (state.current?.id === payload) state.current = null;
       })
       .addCase(fetchPayrollExport.fulfilled, (state, { payload }) => { state.payrollExport = payload; });
   },

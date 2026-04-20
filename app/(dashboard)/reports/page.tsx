@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { DatePickerField } from "@/components/shared/date-picker-field";
 import type { ProjectProgressReport, LabourReport, FinancialSummaryReport } from "@/types";
 
 interface ReportCard {
@@ -71,11 +72,11 @@ export default function ReportsPage() {
         <CardContent className="flex flex-wrap items-end gap-4 py-4">
           <div className="space-y-1">
             <Label className="text-xs">From</Label>
-            <Input type="date" className="w-40" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <DatePickerField value={dateFrom} onChange={setDateFrom} className="w-40" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">To</Label>
-            <Input type="date" className="w-40" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <DatePickerField value={dateTo} onChange={setDateTo} className="w-40" />
           </div>
         </CardContent>
       </Card>

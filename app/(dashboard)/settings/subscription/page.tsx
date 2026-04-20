@@ -162,7 +162,7 @@ export default function SubscriptionSettingsPage() {
       {/* Available plans */}
       <div>
         <h3 className="text-lg font-semibold mb-4">Available Plans</h3>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-3">
           {plans.map((plan, index) => {
             const isCurrent = currentPlanCode === plan.code;
             const price = toNumber(plan.monthlyPrice);

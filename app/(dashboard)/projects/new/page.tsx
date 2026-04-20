@@ -4,7 +4,8 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, UserPlus, Users, Info } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { createProject } from "@/store/slices/projectsSlice";
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { DatePickerField } from "@/components/shared/date-picker-field";
 import type { ProjectType } from "@/types";
 
 const PROJECT_TYPES: { label: string; value: ProjectType }[] = [
@@ -101,6 +103,29 @@ export default function NewProjectPage() {
           Back
         </Button>
       </PageHeader>
+
+      {/* Pre-project setup shortcuts */}
+      {(clients.length === 0 || employees.length === 0) && (
+        <Card className="border-dashed bg-muted/30">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-2 text-sm">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>
+                Get set up faster — add your clients and team members before creating the project.
+                You can still create the project without them.
+              </span>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button variant="outline" size="sm" onClick={() => router.push("/crm/new")}>
+                <UserPlus className="mr-2 h-3.5 w-3.5" /> Add Client
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => router.push("/employees/new")}>
+                <Users className="mr-2 h-3.5 w-3.5" /> Add Employee
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Basic Information */}
@@ -183,7 +208,12 @@ export default function NewProjectPage() {
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Client</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Client</Label>
+                  <Link href="/crm/new" className="text-xs text-primary hover:underline">
+                    + Add new
+                  </Link>
+                </div>
                 <Select
                   value={watchClientId || ""}
                   onValueChange={(val: string | null) => setValue("clientId", val as string)}
@@ -202,7 +232,12 @@ export default function NewProjectPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Project Manager</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Project Manager</Label>
+                  <Link href="/employees/new" className="text-xs text-primary hover:underline">
+                    + Add employee
+                  </Link>
+                </div>
                 <Select
                   value={watchProjectManagerId || ""}
                   onValueChange={(val: string | null) => setValue("projectManagerId", val as string)}
@@ -213,7 +248,7 @@ export default function NewProjectPage() {
                   <SelectContent>
                     {employees.map((emp) => (
                       <SelectItem key={emp.id} value={emp.userId}>
-                        {emp.user?.firstName} {emp.user?.lastName} - {emp.jobTitle}
+                        {emp.user?.firstName} {emp.user?.lastName}{emp.jobTitle ? ` — ${emp.jobTitle}` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -236,7 +271,10 @@ export default function NewProjectPage() {
                 <Label htmlFor="startDate">
                   Start Date <span className="text-destructive">*</span>
                 </Label>
-                <Input id="startDate" type="date" {...register("startDate")} />
+                <DatePickerField
+                  value={watch("startDate") || undefined}
+                  onChange={(value) => setValue("startDate", value, { shouldValidate: true })}
+                />
                 {errors.startDate && (
                   <p className="text-xs text-destructive">{errors.startDate.message}</p>
                 )}
@@ -244,7 +282,10 @@ export default function NewProjectPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="endDate">End Date</Label>
-                <Input id="endDate" type="date" {...register("endDate")} />
+                <DatePickerField
+                  value={watch("endDate") || undefined}
+                  onChange={(value) => setValue("endDate", value, { shouldValidate: true })}
+                />
               </div>
 
               <div className="space-y-2">

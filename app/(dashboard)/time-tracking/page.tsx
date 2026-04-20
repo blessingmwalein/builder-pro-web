@@ -14,6 +14,7 @@ import {
   createManualTimeEntry,
 } from "@/store/slices/timeTrackingSlice";
 import type { Task, TimeEntry, PaginatedResponse } from "@/types";
+import { searchAddresses, type AddressResult } from "@/lib/geocoding";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
@@ -93,6 +94,9 @@ export default function TimeTrackingPage() {
   const [clockTaskId, setClockTaskId] = useState("");
   const [clockInLat, setClockInLat] = useState("");
   const [clockInLng, setClockInLng] = useState("");
+  const [clockInAddressQuery, setClockInAddressQuery] = useState("");
+  const [clockInAddressResults, setClockInAddressResults] = useState<AddressResult[]>([]);
+  const [isResolvingAddress, setIsResolvingAddress] = useState(false);
 
   const [clockOutBreakMinutes, setClockOutBreakMinutes] = useState("0");
   const [clockOutLat, setClockOutLat] = useState("");
@@ -257,6 +261,43 @@ export default function TimeTrackingPage() {
     refreshAfterMutation();
   };
 
+  const captureCurrentLocation = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setClockInLat(String(position.coords.latitude));
+        setClockInLng(String(position.coords.longitude));
+      },
+      () => {
+        // Keep manual fields available if denied or unavailable.
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleSearchAddress = async () => {
+    if (!clockInAddressQuery.trim()) {
+      setClockInAddressResults([]);
+      return;
+    }
+    setIsResolvingAddress(true);
+    try {
+      const results = await searchAddresses(clockInAddressQuery);
+      setClockInAddressResults(results);
+    } catch {
+      setClockInAddressResults([]);
+    } finally {
+      setIsResolvingAddress(false);
+    }
+  };
+
+  const handleSelectAddress = (result: AddressResult) => {
+    setClockInAddressQuery(result.label);
+    setClockInLat(String(result.lat));
+    setClockInLng(String(result.lng));
+    setClockInAddressResults([]);
+  };
+
   const handleClockOut = async () => {
     if (!activeEntry) return;
     await dispatch(
@@ -415,6 +456,35 @@ export default function TimeTrackingPage() {
                   <Label>GPS In Longitude</Label>
                   <Input value={clockInLng} onChange={(e) => setClockInLng(e.target.value)} placeholder="31.0522" />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Address Search</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={clockInAddressQuery}
+                    onChange={(e) => setClockInAddressQuery(e.target.value)}
+                    placeholder="Search location"
+                  />
+                  <Button type="button" variant="outline" onClick={() => void handleSearchAddress()} disabled={isResolvingAddress}>
+                    {isResolvingAddress ? "Searching..." : "Search"}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={captureCurrentLocation}>Use GPS</Button>
+                </div>
+                {clockInAddressResults.length > 0 && (
+                  <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
+                    {clockInAddressResults.map((result) => (
+                      <button
+                        key={`${result.lat}-${result.lng}-${result.label}`}
+                        type="button"
+                        onClick={() => handleSelectAddress(result)}
+                        className="w-full rounded-md p-2 text-left text-xs hover:bg-muted"
+                      >
+                        {result.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <Button className="gap-2" onClick={handleClockIn} disabled={!clockProjectId}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Send, Check, X, FileDown, RefreshCw } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
@@ -19,6 +19,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { downloadQuoteProformaPdf } from "@/lib/pdf";
+import { toast } from "sonner";
 
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -66,7 +79,12 @@ export default function QuoteDetailPage() {
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
   const { current: quote } = useAppSelector((s) => s.quotes);
+  const tenant = useAppSelector((s) => s.auth.tenant);
   const quoteId = params.id as string;
+  const [pendingAction, setPendingAction] = useState<"send" | "approve" | "reject" | "convert" | null>(null);
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectionNotes, setRejectionNotes] = useState("");
 
   useEffect(() => {
     if (quoteId) dispatch(fetchQuote(quoteId));
@@ -82,12 +100,75 @@ export default function QuoteDetailPage() {
   }
 
   const view = normalizeQuote(quote);
+  const isBusy = pendingAction !== null;
 
-  function downloadPdf() {
-    const prevTitle = document.title;
-    document.title = `${view.referenceNumber}.pdf`;
-    window.print();
-    document.title = prevTitle;
+  async function refreshQuote() {
+    await dispatch(fetchQuote(quoteId)).unwrap();
+  }
+
+  async function handleSendQuote() {
+    setPendingAction("send");
+    try {
+      await dispatch(sendQuote(view.id)).unwrap();
+      await refreshQuote();
+      toast.success("Quote sent to client");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send quote");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleApproveQuote() {
+    setPendingAction("approve");
+    try {
+      await dispatch(approveQuote(view.id)).unwrap();
+      await refreshQuote();
+      setApproveDialogOpen(false);
+      toast.success("Quote approved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to approve quote");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleRejectQuote() {
+    setPendingAction("reject");
+    try {
+      await dispatch(rejectQuote({ id: view.id, notes: rejectionNotes.trim() })).unwrap();
+      await refreshQuote();
+      setRejectDialogOpen(false);
+      setRejectionNotes("");
+      toast.success("Quote rejected");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reject quote");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleConvertQuote() {
+    setPendingAction("convert");
+    try {
+      await dispatch(convertQuote(view.id)).unwrap();
+      await refreshQuote();
+      toast.success("Quote converted \u2014 fill in invoice details");
+      router.push(`/invoices/new?quoteId=${view.id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to convert quote");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function downloadPdf() {
+    try {
+      await downloadQuoteProformaPdf(view, tenant);
+      toast.success("PDF downloaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to download PDF");
+    }
   }
 
   return (
@@ -106,34 +187,78 @@ export default function QuoteDetailPage() {
       {/* Action buttons based on status */}
       <div className="flex gap-2">
         {view.status === "DRAFT" && (
-          <Button size="sm" onClick={() => dispatch(sendQuote(view.id))}>
+          <Button size="sm" onClick={handleSendQuote} disabled={isBusy}>
             <Send className="mr-2 h-3.5 w-3.5" />
-            Send to Client
+            {pendingAction === "send" ? "Sending..." : "Send to Client"}
           </Button>
         )}
         {view.status === "SENT" && (
           <>
-            <Button size="sm" variant="default" onClick={() => dispatch(approveQuote(view.id))}>
+            <Button size="sm" variant="default" onClick={() => setApproveDialogOpen(true)} disabled={isBusy}>
               <Check className="mr-2 h-3.5 w-3.5" />
               Approve
             </Button>
-            <Button size="sm" variant="outline" onClick={() => dispatch(rejectQuote({ id: view.id, notes: "" }))}>
+            <Button size="sm" variant="outline" onClick={() => setRejectDialogOpen(true)} disabled={isBusy}>
               <X className="mr-2 h-3.5 w-3.5" />
               Reject
             </Button>
           </>
         )}
         {view.status === "APPROVED" && (
-          <Button size="sm" onClick={() => dispatch(convertQuote(view.id))}>
+          <Button size="sm" onClick={handleConvertQuote} disabled={isBusy}>
             <RefreshCw className="mr-2 h-3.5 w-3.5" />
-            Convert to Invoice
+            {pendingAction === "convert" ? "Converting..." : "Convert to Invoice"}
           </Button>
         )}
-        <Button size="sm" variant="outline" onClick={downloadPdf}>
+        <Button size="sm" variant="outline" onClick={downloadPdf} disabled={isBusy}>
           <FileDown className="mr-2 h-3.5 w-3.5" />
           Download PDF
         </Button>
       </div>
+
+      <AlertDialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Approve Quote?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This quote will be marked as approved and can then be converted to an invoice.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleApproveQuote} disabled={isBusy}>
+              {pendingAction === "approve" ? "Approving..." : "Approve Quote"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject Quote?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Optionally add a short reason before rejecting this quote.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Rejection reason (optional)</p>
+            <Textarea
+              value={rejectionNotes}
+              onChange={(event) => setRejectionNotes(event.target.value)}
+              placeholder="Explain why the quote was rejected"
+              rows={4}
+              disabled={isBusy}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRejectQuote} disabled={isBusy}>
+              {pendingAction === "reject" ? "Rejecting..." : "Reject Quote"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Quote details */}
       <div className="grid gap-6 md:grid-cols-2">

@@ -1,19 +1,31 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Mail, Phone, MapPin } from "lucide-react";
+import { ArrowLeft, Mail, Phone, MapPin, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
-import { fetchClient } from "@/store/slices/crmSlice";
+import { fetchClient, deleteClient } from "@/store/slices/crmSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { EditClientModal } from "@/components/crm/edit-client-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function ClientDetailPage() {
   const router = useRouter();
@@ -22,10 +34,26 @@ export default function ClientDetailPage() {
   const formatCurrency = useFormatCurrency();
   const { current: client } = useAppSelector((s) => s.crm);
   const clientId = params.id as string;
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (clientId) dispatch(fetchClient(clientId));
   }, [dispatch, clientId]);
+
+  async function handleDelete() {
+    if (!client) return;
+    setDeleting(true);
+    try {
+      await dispatch(deleteClient(client.id)).unwrap();
+      toast.success("Client deleted");
+      router.push("/crm");
+    } catch {
+      toast.error("Failed to delete client");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   if (!client) {
     return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
@@ -38,7 +66,40 @@ export default function ClientDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         <Badge variant="secondary">{client.clientType}</Badge>
+        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+          <Pencil className="mr-2 h-4 w-4" /> Edit
+        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger
+            render={
+              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" />
+            }
+          >
+            <Trash2 className="mr-2 h-4 w-4" /> Delete
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this client?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently remove <span className="font-medium">{client.name}</span> from your CRM.
+                Associated projects, quotes and invoices will remain but will lose this client link.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} disabled={deleting}>
+                {deleting ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </PageHeader>
+
+      <EditClientModal
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        client={client}
+      />
 
       {/* Contact card */}
       <Card>

@@ -92,6 +92,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DatePickerField } from "@/components/shared/date-picker-field";
 
 const TASK_STATUSES: { value: TaskStatus; label: string; color: string }[] = [
   { value: "TODO", label: "To Do", color: "bg-gray-400" },
@@ -714,12 +715,18 @@ function CreateTaskDialog({
 
             <div className="space-y-2">
               <Label>Start Date</Label>
-              <Input type="date" {...register("startDate")} />
+              <DatePickerField
+                value={watch("startDate") || undefined}
+                onChange={(value) => setValue("startDate", value, { shouldValidate: true })}
+              />
             </div>
 
             <div className="space-y-2">
               <Label>Due Date</Label>
-              <Input type="date" {...register("dueDate")} />
+              <DatePickerField
+                value={watch("dueDate") || undefined}
+                onChange={(value) => setValue("dueDate", value, { shouldValidate: true })}
+              />
             </div>
           </div>
 
@@ -977,11 +984,11 @@ function TaskSheet({
                   </div>
                   <div className="space-y-1">
                     <Label>Start Date</Label>
-                    <Input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} />
+                    <DatePickerField value={editStartDate || undefined} onChange={setEditStartDate} />
                   </div>
                   <div className="space-y-1">
                     <Label>Due Date</Label>
-                    <Input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} />
+                    <DatePickerField value={editDueDate || undefined} onChange={setEditDueDate} />
                   </div>
                 </div>
 
@@ -1016,7 +1023,6 @@ function TaskSheet({
                       <div>
                         <p className="text-sm font-semibold">{a.firstName} {a.lastName}</p>
                         <p className="text-xs text-muted-foreground">{a.email}</p>
-                        <p className="text-xs text-muted-foreground">User ID: {a.userId}</p>
                         <p className="text-xs text-muted-foreground">Assigned: {a.assignedAt ? new Date(a.assignedAt).toLocaleString() : "--"}</p>
                       </div>
                       <Button variant="outline" size="sm" onClick={() => void unassign(a.userId)}>Remove</Button>

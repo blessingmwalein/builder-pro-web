@@ -43,7 +43,7 @@ function AcceptInviteForm() {
   }
 
   return (
-    <>
+    <div className="mx-auto w-full max-w-md">
       <div className="mb-8 flex items-center gap-3 lg:hidden">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
           <Building2 className="h-6 w-6 text-primary-foreground" />
@@ -85,7 +85,7 @@ function AcceptInviteForm() {
           </form>
         </CardContent>
       </Card>
-    </>
+    </div>
   );
 }
 

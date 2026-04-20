@@ -18,6 +18,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { PaymentMethod } from "@/types";
+import { downloadInvoicePdf } from "@/lib/pdf";
+import { toast } from "sonner";
 
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -70,20 +72,35 @@ export default function InvoiceDetailPage() {
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
   const { current: invoice } = useAppSelector((s) => s.invoices);
+  const tenant = useAppSelector((s) => s.auth.tenant);
   const invoiceId = params.id as string;
   const [showPayment, setShowPayment] = useState(false);
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState<PaymentMethod>("BANK_TRANSFER");
+  const [pendingAction, setPendingAction] = useState<"send" | "payment" | "void" | null>(null);
 
   useEffect(() => {
     if (invoiceId) dispatch(fetchInvoice(invoiceId));
   }, [dispatch, invoiceId]);
 
-  function handleRecordPayment() {
+  async function refreshInvoice() {
+    await dispatch(fetchInvoice(invoiceId)).unwrap();
+  }
+
+  async function handleRecordPayment() {
     if (!invoice || !payAmount) return;
-    dispatch(recordPayment({ invoiceId: invoice.id, method: payMethod, amount: parseFloat(payAmount) }));
-    setShowPayment(false);
-    setPayAmount("");
+    setPendingAction("payment");
+    try {
+      await dispatch(recordPayment({ invoiceId: invoice.id, method: payMethod, amount: parseFloat(payAmount) })).unwrap();
+      await refreshInvoice();
+      toast.success("Payment recorded");
+      setShowPayment(false);
+      setPayAmount("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to record payment");
+    } finally {
+      setPendingAction(null);
+    }
   }
 
   if (!invoice) {
@@ -91,14 +108,43 @@ export default function InvoiceDetailPage() {
   }
 
   const view = normalizeInvoice(invoice);
+  const isBusy = pendingAction !== null;
 
   const paidPercent = view.total > 0 ? (view.amountPaid / view.total) * 100 : 0;
 
-  function downloadPdf() {
-    const prevTitle = document.title;
-    document.title = `${view.invoiceNumber}.pdf`;
-    window.print();
-    document.title = prevTitle;
+  async function handleSendInvoice() {
+    setPendingAction("send");
+    try {
+      await dispatch(sendInvoice(view.id)).unwrap();
+      await refreshInvoice();
+      toast.success("Invoice sent to client");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send invoice");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleVoidInvoice() {
+    setPendingAction("void");
+    try {
+      await dispatch(voidInvoice(view.id)).unwrap();
+      await refreshInvoice();
+      toast.success("Invoice voided");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to void invoice");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function downloadPdf() {
+    try {
+      await downloadInvoicePdf(view, tenant);
+      toast.success("PDF downloaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to download PDF");
+    }
   }
 
   return (
@@ -112,21 +158,21 @@ export default function InvoiceDetailPage() {
 
       <div className="flex flex-wrap gap-2">
         {view.status === "DRAFT" && (
-          <Button size="sm" onClick={() => dispatch(sendInvoice(view.id))}>
-            <Send className="mr-2 h-3.5 w-3.5" /> Send to Client
+          <Button size="sm" onClick={handleSendInvoice} disabled={isBusy}>
+            <Send className="mr-2 h-3.5 w-3.5" /> {pendingAction === "send" ? "Sending..." : "Send to Client"}
           </Button>
         )}
         {["SENT", "PARTIALLY_PAID", "OVERDUE"].includes(view.status) && (
-          <Button size="sm" onClick={() => { setPayAmount(String(view.balanceDue)); setShowPayment(true); }}>
+          <Button size="sm" onClick={() => { setPayAmount(String(view.balanceDue)); setShowPayment(true); }} disabled={isBusy}>
             <DollarSign className="mr-2 h-3.5 w-3.5" /> Record Payment
           </Button>
         )}
         {view.status !== "VOID" && view.status !== "PAID" && (
-          <Button size="sm" variant="outline" onClick={() => dispatch(voidInvoice(view.id))}>
-            <Ban className="mr-2 h-3.5 w-3.5" /> Void
+          <Button size="sm" variant="outline" onClick={handleVoidInvoice} disabled={isBusy}>
+            <Ban className="mr-2 h-3.5 w-3.5" /> {pendingAction === "void" ? "Voiding..." : "Void"}
           </Button>
         )}
-        <Button size="sm" variant="outline" onClick={downloadPdf}>
+        <Button size="sm" variant="outline" onClick={downloadPdf} disabled={isBusy}>
           <FileDown className="mr-2 h-3.5 w-3.5" /> Download PDF
         </Button>
       </div>
@@ -243,8 +289,10 @@ export default function InvoiceDetailPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPayment(false)}>Cancel</Button>
-            <Button onClick={handleRecordPayment}>Record Payment</Button>
+            <Button variant="outline" onClick={() => setShowPayment(false)} disabled={isBusy}>Cancel</Button>
+            <Button onClick={handleRecordPayment} disabled={isBusy || !payAmount}>
+              {pendingAction === "payment" ? "Recording..." : "Record Payment"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

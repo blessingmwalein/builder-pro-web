@@ -45,7 +45,7 @@ export default function LoginPage() {
   }
 
   return (
-    <>
+    <div className="mx-auto w-full max-w-md">
       {/* Mobile-only logo */}
       <div className="mb-8 flex items-center gap-3 lg:hidden">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
@@ -124,6 +124,6 @@ export default function LoginPage() {
           </div>
         </CardContent>
       </Card>
-    </>
+    </div>
   );
 }

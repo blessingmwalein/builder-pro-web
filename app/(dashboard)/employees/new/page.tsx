@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { JobTitleSelect } from "@/components/shared/job-title-select";
+import { DatePickerField } from "@/components/shared/date-picker-field";
 import type { User, PaginatedResponse } from "@/types";
 import { useState } from "react";
 
@@ -31,6 +33,7 @@ export default function NewEmployeePage() {
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<CreateEmployeeFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -76,7 +79,10 @@ export default function NewEmployeePage() {
             </div>
             <div className="space-y-2">
               <Label>Job Title *</Label>
-              <Input placeholder="e.g. Site Supervisor" {...register("jobTitle")} />
+              <JobTitleSelect
+                value={watch("jobTitle") || ""}
+                onChange={(v) => setValue("jobTitle", v, { shouldValidate: true })}
+              />
               {errors.jobTitle && <p className="text-xs text-destructive">{errors.jobTitle.message}</p>}
             </div>
             <div className="space-y-2">
@@ -98,7 +104,10 @@ export default function NewEmployeePage() {
             </div>
             <div className="space-y-2">
               <Label>Start Date *</Label>
-              <Input type="date" {...register("startDate")} />
+              <DatePickerField
+                value={watch("startDate")}
+                onChange={(value) => setValue("startDate", value, { shouldValidate: true })}
+              />
             </div>
           </CardContent>
         </Card>

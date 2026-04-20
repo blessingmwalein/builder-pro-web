@@ -67,8 +67,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DatePickerField } from "@/components/shared/date-picker-field";
+import { BudgetEditModal } from "@/components/financials/budget-edit-modal";
+import { searchAddresses, type AddressResult } from "@/lib/geocoding";
+import { fetchProjectBudget } from "@/store/slices/financialsSlice";
 
-import type { User as AppUser, PaginatedResponse } from "@/types";
+import type { Task, User as AppUser, PaginatedResponse } from "@/types";
 
 type NormalizedDashboard = {
   project: {
@@ -392,11 +396,13 @@ export default function ProjectDetailPage() {
   const { entries, activeEntry, weeklySummary } = useAppSelector((s) => s.timeTracking);
 
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [projectTasks, setProjectTasks] = useState<Task[]>([]);
 
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [memberModalOpen, setMemberModalOpen] = useState(false);
   const [clockInModalOpen, setClockInModalOpen] = useState(false);
+  const [budgetModalOpen, setBudgetModalOpen] = useState(false);
   const [clockOutModalOpen, setClockOutModalOpen] = useState(false);
   const [manualEntryModalOpen, setManualEntryModalOpen] = useState(false);
 
@@ -419,6 +425,9 @@ export default function ProjectDetailPage() {
   const [clockInTaskId, setClockInTaskId] = useState("");
   const [clockInLat, setClockInLat] = useState("");
   const [clockInLng, setClockInLng] = useState("");
+  const [clockInAddressQuery, setClockInAddressQuery] = useState("");
+  const [clockInAddressResults, setClockInAddressResults] = useState<AddressResult[]>([]);
+  const [isResolvingAddress, setIsResolvingAddress] = useState(false);
 
   const [clockOutBreakMinutes, setClockOutBreakMinutes] = useState("0");
   const [clockOutLat, setClockOutLat] = useState("");
@@ -429,6 +438,10 @@ export default function ProjectDetailPage() {
   const [manualClockOutAt, setManualClockOutAt] = useState("");
   const [manualBreakMinutes, setManualBreakMinutes] = useState("30");
   const [manualNotes, setManualNotes] = useState("");
+
+  const taskNameMap = useMemo(() => {
+    return new Map(projectTasks.map((task) => [task.id, task.title]));
+  }, [projectTasks]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -443,6 +456,11 @@ export default function ProjectDetailPage() {
       .get<PaginatedResponse<AppUser>>("/users", { limit: 200, isActive: true })
       .then((res) => setUsers(res.items))
       .catch(() => setUsers([]));
+
+    void api
+      .get<PaginatedResponse<Task>>("/tasks", { projectId, limit: 50 })
+      .then((res) => setProjectTasks(res.items))
+      .catch(() => setProjectTasks([]));
   }, [dispatch, projectId]);
 
   const view = useMemo(() => normalizeDashboard(dashboard ?? {}, members), [dashboard, members]);
@@ -473,6 +491,10 @@ export default function ProjectDetailPage() {
     await dispatch(fetchTimeEntries({ projectId, limit: 50 }));
     await dispatch(fetchActiveEntry());
     await dispatch(fetchWeeklySummary(getCurrentWeekStartISO()));
+    const tasksRes = await api
+      .get<PaginatedResponse<Task>>("/tasks", { projectId, limit: 50 })
+      .catch(() => ({ items: [] as Task[] }));
+    setProjectTasks(tasksRes.items ?? []);
   }
 
   async function handleCreateQuote() {
@@ -560,6 +582,43 @@ export default function ProjectDetailPage() {
     setClockInLat("");
     setClockInLng("");
     await refreshProjectData();
+  }
+
+  function captureCurrentLocation() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setClockInLat(String(position.coords.latitude));
+        setClockInLng(String(position.coords.longitude));
+      },
+      () => {
+        // Keep manual entry available when geolocation fails or is denied.
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  async function handleSearchAddress() {
+    if (!clockInAddressQuery.trim()) {
+      setClockInAddressResults([]);
+      return;
+    }
+    setIsResolvingAddress(true);
+    try {
+      const results = await searchAddresses(clockInAddressQuery);
+      setClockInAddressResults(results);
+    } catch {
+      setClockInAddressResults([]);
+    } finally {
+      setIsResolvingAddress(false);
+    }
+  }
+
+  function handleSelectAddress(result: AddressResult) {
+    setClockInAddressQuery(result.label);
+    setClockInLat(String(result.lat));
+    setClockInLng(String(result.lng));
+    setClockInAddressResults([]);
   }
 
   async function handleClockOut() {
@@ -743,19 +802,62 @@ export default function ProjectDetailPage() {
                 <span className="text-muted-foreground">Overdue Tasks</span>
                 <span className="font-semibold">{view.tasks.overdueCount}</span>
               </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <p className="text-sm font-semibold">Current Tasks</p>
+                {projectTasks.length === 0 ? (
+                  <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    No task tiles yet for this project.
+                  </p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {projectTasks.map((task) => (
+                      <button
+                        key={task.id}
+                        type="button"
+                        onClick={() => router.push(`/tasks?taskId=${task.id}`)}
+                        className="rounded-lg border p-3 text-left transition-colors hover:bg-muted/60"
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="line-clamp-1 text-sm font-semibold">{task.title}</p>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {formatStatusLabel(task.status)}
+                          </Badge>
+                        </div>
+                        <p className="line-clamp-2 text-xs text-muted-foreground">
+                          {task.description || "No description provided."}
+                        </p>
+                        <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{task.priority} priority</span>
+                          <span>Due {safeDate(task.dueDate)}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="budget" className="mt-4">
           <Card>
-            <CardHeader><CardTitle className="text-base">Budget Breakdown</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Budget Breakdown</CardTitle>
+              <Button size="sm" onClick={() => setBudgetModalOpen(true)}>
+                <Plus className="mr-1 h-4 w-4" /> Edit Budget
+              </Button>
+            </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Baseline Budget</p><p className="text-lg font-bold">{formatCurrency(view.budget.baselineBudget)}</p></div>
                 <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Planned</p><p className="text-lg font-bold">{formatCurrency(view.budget.planned)}</p></div>
                 <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual</p><p className="text-lg font-bold">{formatCurrency(view.budget.actual)}</p></div>
               </div>
+
+              <BudgetBreakdownLines projectId={projectId} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -846,7 +948,7 @@ export default function ProjectDetailPage() {
               {activeEntry ? (
                 <div className="rounded-lg border p-3 text-sm">
                   <p><span className="text-muted-foreground">Clocked In:</span> {new Date(activeEntry.clockInAt).toLocaleString()}</p>
-                  <p><span className="text-muted-foreground">Task ID:</span> {activeEntry.taskId || "-"}</p>
+                  <p><span className="text-muted-foreground">Task:</span> {activeEntry.task?.title || (activeEntry.taskId ? taskNameMap.get(activeEntry.taskId) : "-") || "-"}</p>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No active time entry.</p>
@@ -902,8 +1004,8 @@ export default function ProjectDetailPage() {
           <div className="space-y-3">
             <div className="space-y-1"><Label>Title</Label><Input value={quoteTitle} onChange={(e) => setQuoteTitle(e.target.value)} /></div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1"><Label>Issue Date</Label><Input type="date" value={quoteIssueDate} onChange={(e) => setQuoteIssueDate(e.target.value)} /></div>
-              <div className="space-y-1"><Label>Expiry Date</Label><Input type="date" value={quoteExpiryDate} onChange={(e) => setQuoteExpiryDate(e.target.value)} /></div>
+              <div className="space-y-1"><Label>Issue Date</Label><DatePickerField value={quoteIssueDate || undefined} onChange={setQuoteIssueDate} /></div>
+              <div className="space-y-1"><Label>Expiry Date</Label><DatePickerField value={quoteExpiryDate || undefined} onChange={setQuoteExpiryDate} /></div>
             </div>
             <div className="space-y-1"><Label>Line Description</Label><Input value={quoteLineDescription} onChange={(e) => setQuoteLineDescription(e.target.value)} /></div>
             <div className="grid grid-cols-2 gap-2">
@@ -926,8 +1028,8 @@ export default function ProjectDetailPage() {
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1"><Label>Issue Date</Label><Input type="date" value={invoiceIssueDate} onChange={(e) => setInvoiceIssueDate(e.target.value)} /></div>
-              <div className="space-y-1"><Label>Due Date</Label><Input type="date" value={invoiceDueDate} onChange={(e) => setInvoiceDueDate(e.target.value)} /></div>
+              <div className="space-y-1"><Label>Issue Date</Label><DatePickerField value={invoiceIssueDate || undefined} onChange={setInvoiceIssueDate} /></div>
+              <div className="space-y-1"><Label>Due Date</Label><DatePickerField value={invoiceDueDate || undefined} onChange={setInvoiceDueDate} /></div>
             </div>
             <div className="space-y-1"><Label>Line Description</Label><Input value={invoiceDescription} onChange={(e) => setInvoiceDescription(e.target.value)} /></div>
             <div className="grid grid-cols-2 gap-2">
@@ -976,7 +1078,46 @@ export default function ProjectDetailPage() {
             <DialogDescription>Start a time entry for this project.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>Task ID (optional)</Label><Input value={clockInTaskId} onChange={(e) => setClockInTaskId(e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>Current Task (optional)</Label>
+              <Select value={clockInTaskId || "NONE"} onValueChange={(value: string | null) => setClockInTaskId(value === "NONE" || value == null ? "" : value)}>
+                <SelectTrigger><SelectValue placeholder="Select task" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">No task</SelectItem>
+                  {projectTasks.map((task) => (
+                    <SelectItem key={task.id} value={task.id}>{task.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Address Search</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Search address"
+                  value={clockInAddressQuery}
+                  onChange={(e) => setClockInAddressQuery(e.target.value)}
+                />
+                <Button type="button" variant="outline" onClick={() => void handleSearchAddress()} disabled={isResolvingAddress}>
+                  {isResolvingAddress ? "Searching..." : "Search"}
+                </Button>
+              </div>
+              {clockInAddressResults.length > 0 && (
+                <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {clockInAddressResults.map((result) => (
+                    <button
+                      key={`${result.lat}-${result.lng}-${result.label}`}
+                      type="button"
+                      onClick={() => handleSelectAddress(result)}
+                      className="w-full rounded-md p-2 text-left text-xs hover:bg-muted"
+                    >
+                      {result.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <Button type="button" variant="outline" onClick={captureCurrentLocation}>Use Current Location</Button>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1"><Label>GPS Lat</Label><Input value={clockInLat} onChange={(e) => setClockInLat(e.target.value)} /></div>
               <div className="space-y-1"><Label>GPS Lng</Label><Input value={clockInLng} onChange={(e) => setClockInLng(e.target.value)} /></div>
@@ -1016,7 +1157,18 @@ export default function ProjectDetailPage() {
             <DialogDescription>Create a manual entry (pending approval).</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>Task ID (optional)</Label><Input value={manualTaskId} onChange={(e) => setManualTaskId(e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>Task (optional)</Label>
+              <Select value={manualTaskId || "NONE"} onValueChange={(value: string | null) => setManualTaskId(value === "NONE" || value == null ? "" : value)}>
+                <SelectTrigger><SelectValue placeholder="Select task" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">No task</SelectItem>
+                  {projectTasks.map((task) => (
+                    <SelectItem key={task.id} value={task.id}>{task.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1"><Label>Clock In At</Label><Input type="datetime-local" value={manualClockInAt} onChange={(e) => setManualClockInAt(e.target.value)} /></div>
             <div className="space-y-1"><Label>Clock Out At</Label><Input type="datetime-local" value={manualClockOutAt} onChange={(e) => setManualClockOutAt(e.target.value)} /></div>
             <div className="space-y-1"><Label>Break Minutes</Label><Input type="number" value={manualBreakMinutes} onChange={(e) => setManualBreakMinutes(e.target.value)} /></div>
@@ -1028,6 +1180,59 @@ export default function ProjectDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BudgetEditModal
+        open={budgetModalOpen}
+        onOpenChange={setBudgetModalOpen}
+        projectId={projectId}
+      />
+    </div>
+  );
+}
+
+function BudgetBreakdownLines({ projectId }: { projectId: string }) {
+  const dispatch = useAppDispatch();
+  const formatCurrency = useFormatCurrency();
+  const { projectBudget } = useAppSelector((s) => s.financials);
+
+  useEffect(() => {
+    void dispatch(fetchProjectBudget(projectId));
+  }, [dispatch, projectId]);
+
+  const lines = projectBudget?.lines ?? [];
+  if (lines.length === 0) {
+    return (
+      <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+        No per-category budget yet. Click &ldquo;Edit Budget&rdquo; to allocate
+        planned spend by category.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Per-category budget
+      </p>
+      <div className="divide-y rounded-md border">
+        {lines.map((line) => {
+          const over = line.variance < 0;
+          return (
+            <div key={line.categoryId} className="flex items-center justify-between p-3">
+              <div>
+                <p className="text-sm font-medium">{line.categoryName}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Actual {formatCurrency(line.actualAmount)} of {formatCurrency(line.plannedAmount)}
+                </p>
+              </div>
+              <div className={`text-right text-sm font-semibold ${over ? "text-destructive" : "text-emerald-600"}`}>
+                {over ? "Over by " : "Under by "}
+                {formatCurrency(Math.abs(line.variance))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
