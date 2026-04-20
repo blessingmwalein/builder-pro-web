@@ -121,40 +121,42 @@ export default function RegisterPage() {
                   {errors.companyName && <p className="text-xs text-destructive">{errors.companyName.message}</p>}
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Sector / Industry</Label>
-                  <Select
-                    defaultValue="Residential"
-                    onValueChange={(v: string | null) => {
-                      if (v) setValue("industry", v as "Residential" | "Commercial" | "Industrial");
-                    }}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {INDUSTRIES.map((ind) => (
-                        <SelectItem key={ind} value={ind}>{ind}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.industry && <p className="text-xs text-destructive">{errors.industry.message}</p>}
-                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Sector / Industry</Label>
+                    <Select
+                      defaultValue="Residential"
+                      onValueChange={(v: string | null) => {
+                        if (v) setValue("industry", v as "Residential" | "Commercial" | "Industrial");
+                      }}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {INDUSTRIES.map((ind) => (
+                          <SelectItem key={ind} value={ind}>{ind}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.industry && <p className="text-xs text-destructive">{errors.industry.message}</p>}
+                  </div>
 
-                <div className="space-y-2">
-                  <Label>Company Size</Label>
-                  <Select
-                    defaultValue="LARGE"
-                    onValueChange={(v: string | null) => {
-                      if (v) setValue("companySize", v as "SMALL" | "MEDIUM" | "LARGE");
-                    }}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {COMPANY_SIZES.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.companySize && <p className="text-xs text-destructive">{errors.companySize.message}</p>}
+                  <div className="space-y-2">
+                    <Label>Company Size</Label>
+                    <Select
+                      defaultValue="LARGE"
+                      onValueChange={(v: string | null) => {
+                        if (v) setValue("companySize", v as "SMALL" | "MEDIUM" | "LARGE");
+                      }}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {COMPANY_SIZES.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.companySize && <p className="text-xs text-destructive">{errors.companySize.message}</p>}
+                  </div>
                 </div>
 
                 <Button type="button" className="w-full" onClick={goNextStep}>

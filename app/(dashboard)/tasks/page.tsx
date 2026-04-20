@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -243,6 +244,58 @@ export default function TasksPage() {
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "ALL">("ALL");
   const [projectFilter, setProjectFilter] = useState<string>("ALL");
 
+  // Drag-and-drop state for the Kanban board.
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<TaskStatus | null>(null);
+  // Prevents double-firing when onDragLeave races with onDragEnter on nested children.
+  const dragCounter = useRef<Record<string, number>>({});
+
+  function handleDragStart(e: React.DragEvent<HTMLDivElement>, taskId: string) {
+    setDraggingId(taskId);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", taskId);
+  }
+
+  function handleDragEnd() {
+    setDraggingId(null);
+    setDragOverStatus(null);
+    dragCounter.current = {};
+  }
+
+  function handleColumnDragEnter(status: TaskStatus) {
+    dragCounter.current[status] = (dragCounter.current[status] || 0) + 1;
+    setDragOverStatus(status);
+  }
+
+  function handleColumnDragLeave(status: TaskStatus) {
+    dragCounter.current[status] = Math.max(0, (dragCounter.current[status] || 0) - 1);
+    if (dragCounter.current[status] === 0 && dragOverStatus === status) {
+      setDragOverStatus(null);
+    }
+  }
+
+  async function handleColumnDrop(e: React.DragEvent<HTMLDivElement>, newStatus: TaskStatus) {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData("text/plain") || draggingId;
+    setDraggingId(null);
+    setDragOverStatus(null);
+    dragCounter.current = {};
+    if (!taskId) return;
+
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || task.status === newStatus) return;
+
+    try {
+      await dispatch(updateTaskStatus({ id: taskId, status: newStatus })).unwrap();
+      toast.success(
+        `Moved to ${TASK_STATUSES.find((s) => s.value === newStatus)?.label ?? newStatus}`,
+      );
+      void dispatch(fetchMyQueue());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update task status");
+    }
+  }
+
   useEffect(() => {
     dispatch(fetchTasks({}));
     dispatch(fetchMyQueue());
@@ -394,48 +447,82 @@ export default function TasksPage() {
             />
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-              {TASK_STATUSES.map((col) => (
-                <div key={col.value} className="flex flex-col rounded-lg border bg-muted/30">
-                  <div className="flex items-center gap-2 border-b px-3 py-2.5">
-                    <span className={`h-2.5 w-2.5 rounded-full ${col.color}`} />
-                    <span className="text-sm font-semibold">{col.label}</span>
-                    <span className="ml-auto rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">
-                      {filteredTasks.filter((t) => t.status === col.value).length}
-                    </span>
-                  </div>
-                  <div className="space-y-2 p-2">
-                    {filteredTasks.filter((t) => t.status === col.value).map((task) => (
-                      <Card key={task.id} size="sm" className="cursor-pointer transition-shadow hover:shadow-md" onClick={() => openTask(task.id)}>
-                        <CardContent className="space-y-2.5">
-                          <p className="line-clamp-2 text-sm font-medium">{task.title}</p>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <PriorityBadge priority={task.priority} />
-                            {task.project?.name && (
-                              <span className="max-w-[120px] truncate text-[11px] text-muted-foreground">
-                                {task.project.name}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <AssigneeAvatars assignees={task.assignees} maxShow={3} size="sm" />
-                            {task.dueDate && (
-                              <span
-                                className={`flex items-center gap-1 text-[11px] ${
-                                  task.status !== "DONE" && isOverdue(task.dueDate)
-                                    ? "font-medium text-destructive"
-                                    : "text-muted-foreground"
-                                }`}
+              {TASK_STATUSES.map((col) => {
+                const isDropTarget = dragOverStatus === col.value;
+                return (
+                  <div
+                    key={col.value}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                    }}
+                    onDragEnter={() => handleColumnDragEnter(col.value)}
+                    onDragLeave={() => handleColumnDragLeave(col.value)}
+                    onDrop={(e) => void handleColumnDrop(e, col.value)}
+                    className={`flex flex-col rounded-lg border bg-muted/30 transition-colors ${
+                      isDropTarget ? "border-primary ring-2 ring-primary/40 bg-primary/5" : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 border-b px-3 py-2.5">
+                      <span className={`h-2.5 w-2.5 rounded-full ${col.color}`} />
+                      <span className="text-sm font-semibold">{col.label}</span>
+                      <span className="ml-auto rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">
+                        {filteredTasks.filter((t) => t.status === col.value).length}
+                      </span>
+                    </div>
+                    <div className="min-h-24 space-y-2 p-2">
+                      {filteredTasks
+                        .filter((t) => t.status === col.value)
+                        .map((task) => {
+                          const isDragging = draggingId === task.id;
+                          return (
+                            <div
+                              key={task.id}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, task.id)}
+                              onDragEnd={handleDragEnd}
+                              className={`cursor-grab active:cursor-grabbing ${
+                                isDragging ? "opacity-40" : ""
+                              }`}
+                            >
+                              <Card
+                                size="sm"
+                                className="transition-shadow hover:shadow-md"
+                                onClick={() => openTask(task.id)}
                               >
-                                <Calendar className="h-3 w-3" /> {formatDate(task.dueDate)}
-                              </span>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                                <CardContent className="space-y-2.5">
+                                  <p className="line-clamp-2 text-sm font-medium">{task.title}</p>
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <PriorityBadge priority={task.priority} />
+                                    {task.project?.name && (
+                                      <span className="max-w-[120px] truncate text-[11px] text-muted-foreground">
+                                        {task.project.name}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <AssigneeAvatars assignees={task.assignees} maxShow={3} size="sm" />
+                                    {task.dueDate && (
+                                      <span
+                                        className={`flex items-center gap-1 text-[11px] ${
+                                          task.status !== "DONE" && isOverdue(task.dueDate)
+                                            ? "font-medium text-destructive"
+                                            : "text-muted-foreground"
+                                        }`}
+                                      >
+                                        <Calendar className="h-3 w-3" /> {formatDate(task.dueDate)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            </div>
+                          );
+                        })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </TabsContent>
