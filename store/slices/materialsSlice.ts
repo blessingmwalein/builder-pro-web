@@ -2,6 +2,30 @@ import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import api from "@/lib/api";
 import type { Material, MaterialUsageLog, Supplier, PaginatedResponse, CreateMaterialUsageRequest } from "@/types";
 
+export type MaterialCategory = {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+};
+
+export type MaterialPurchaseItem = {
+  materialId: string;
+  quantity: number;
+  unitCost: number;
+  description?: string;
+};
+
+export type CreateMaterialPurchaseRequest = {
+  supplierId?: string;
+  projectId?: string;
+  purchaseNumber?: string;
+  purchasedAt?: string;
+  notes?: string;
+  receiptUrl?: string;
+  items: MaterialPurchaseItem[];
+};
+
 interface MaterialsState {
   items: Material[];
   total: number;
@@ -9,6 +33,7 @@ interface MaterialsState {
   usageTotal: number;
   lowStock: Material[];
   suppliers: Supplier[];
+  categories: MaterialCategory[];
   isLoading: boolean;
 }
 
@@ -19,6 +44,7 @@ const initialState: MaterialsState = {
   usageTotal: 0,
   lowStock: [],
   suppliers: [],
+  categories: [],
   isLoading: false,
 };
 
@@ -30,8 +56,34 @@ export const fetchMaterials = createAsyncThunk(
 
 export const createMaterial = createAsyncThunk(
   "materials/create",
-  async (data: { name: string; sku?: string; unit: string; unitCost: number; supplierId?: string }) =>
-    api.post<Material>("/materials", data)
+  async (data: {
+    name: string;
+    sku?: string;
+    unit: string;
+    unitCost: number;
+    supplierId?: string;
+    categoryId?: string;
+    reorderAt?: number;
+    description?: string;
+    stockOnHand?: number;
+  }) => api.post<Material>("/materials", data)
+);
+
+export const fetchMaterialCategories = createAsyncThunk(
+  "materials/fetchCategories",
+  async () => api.get<MaterialCategory[]>("/materials/categories/list")
+);
+
+export const createMaterialCategory = createAsyncThunk(
+  "materials/createCategory",
+  async (data: { code: string; name: string; description?: string }) =>
+    api.post<MaterialCategory>("/materials/categories", data)
+);
+
+export const createMaterialPurchase = createAsyncThunk(
+  "materials/createPurchase",
+  async (data: CreateMaterialPurchaseRequest) =>
+    api.post<{ id: string; totalAmount: string | number }>("/materials/purchases", data)
 );
 
 export const fetchLowStock = createAsyncThunk(
@@ -82,7 +134,12 @@ const materialsSlice = createSlice({
         state.usageTotal = payload.meta.total;
       })
       .addCase(fetchSuppliers.fulfilled, (state, { payload }) => { state.suppliers = payload.items; })
-      .addCase(createSupplier.fulfilled, (state, { payload }) => { state.suppliers.unshift(payload); });
+      .addCase(createSupplier.fulfilled, (state, { payload }) => { state.suppliers.unshift(payload); })
+      .addCase(fetchMaterialCategories.fulfilled, (state, { payload }) => { state.categories = payload; })
+      .addCase(createMaterialCategory.fulfilled, (state, { payload }) => {
+        state.categories.push(payload);
+        state.categories.sort((a, b) => a.name.localeCompare(b.name));
+      });
   },
 });
 

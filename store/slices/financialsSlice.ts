@@ -3,6 +3,7 @@ import api from "@/lib/api";
 import type {
   FinancialDashboard,
   ProjectBudget,
+  BudgetLine,
   BudgetCategory,
   FinancialTransaction,
   PaginatedResponse,
@@ -28,6 +29,55 @@ const initialState: FinancialsState = {
   isLoading: false,
 };
 
+function toNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/,/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function normalizeProjectBudget(raw: unknown): ProjectBudget {
+  const data = (raw ?? {}) as Record<string, unknown>;
+  const project = (data.project ?? {}) as Record<string, unknown>;
+
+  const sourceLines = Array.isArray(data.lines)
+    ? (data.lines as Array<Record<string, unknown>>)
+    : Array.isArray(data.budgets)
+      ? (data.budgets as Array<Record<string, unknown>>)
+      : [];
+
+  const lines: BudgetLine[] = sourceLines.map((line) => {
+    const category = (line.category ?? {}) as Record<string, unknown>;
+    return {
+      categoryId: String(line.categoryId ?? category.id ?? ""),
+      categoryName: String(line.categoryName ?? category.name ?? "Uncategorized"),
+      plannedAmount: toNumber(line.plannedAmount),
+      actualAmount: toNumber(line.actualAmount),
+      variance:
+        line.variance !== undefined
+          ? toNumber(line.variance)
+          : line.varianceAmount !== undefined
+            ? toNumber(line.varianceAmount)
+            : toNumber(line.plannedAmount) - toNumber(line.actualAmount),
+      thresholdPct: toNumber(line.thresholdPct),
+    };
+  });
+
+  return {
+    projectId: String(data.projectId ?? project.id ?? ""),
+    totalBudget: toNumber(data.totalBudget ?? data.totalPlanned),
+    totalSpent: toNumber(data.totalSpent ?? data.totalActual),
+    remaining:
+      data.remaining !== undefined
+        ? toNumber(data.remaining)
+        : toNumber(data.totalBudget ?? data.totalPlanned) - toNumber(data.totalSpent ?? data.totalActual),
+    percentUsed: toNumber(data.percentUsed),
+    lines,
+  };
+}
+
 export const fetchFinancialDashboard = createAsyncThunk(
   "financials/fetchDashboard",
   async () => api.get<FinancialDashboard>("/financials/dashboard")
@@ -42,13 +92,15 @@ export const fetchFinancialSummary = createAsyncThunk(
 export const fetchProjectBudget = createAsyncThunk(
   "financials/fetchProjectBudget",
   async (projectId: string) =>
-    api.get<ProjectBudget>(`/financials/projects/${projectId}/budget`)
+    normalizeProjectBudget(await api.get<unknown>(`/financials/projects/${projectId}/budget`))
 );
 
 export const updateProjectBudget = createAsyncThunk(
   "financials/updateProjectBudget",
   async ({ projectId, lines }: { projectId: string; lines: { categoryId: string; plannedAmount: number; thresholdPct: number }[] }) =>
-    api.put<ProjectBudget>(`/financials/projects/${projectId}/budget`, { lines })
+    normalizeProjectBudget(
+      await api.put<unknown>(`/financials/projects/${projectId}/budget`, { lines })
+    )
 );
 
 export const fetchBudgetCategories = createAsyncThunk(

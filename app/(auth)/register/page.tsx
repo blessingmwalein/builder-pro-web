@@ -130,7 +130,7 @@ export default function RegisterPage() {
                         if (v) setValue("industry", v as "Residential" | "Commercial" | "Industrial");
                       }}
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {INDUSTRIES.map((ind) => (
                           <SelectItem key={ind} value={ind}>{ind}</SelectItem>
@@ -148,7 +148,7 @@ export default function RegisterPage() {
                         if (v) setValue("companySize", v as "SMALL" | "MEDIUM" | "LARGE");
                       }}
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {COMPANY_SIZES.map((s) => (
                           <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>

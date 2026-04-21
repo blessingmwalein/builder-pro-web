@@ -263,6 +263,18 @@ export default function SubscriptionPage() {
         </Button>
       </div>
 
+      <div className="mx-auto flex max-w-2xl items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+        <Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <div className="space-y-1">
+          <p className="font-medium">Need more users than your plan allows?</p>
+          <p className="text-muted-foreground">
+            Each plan caps the number of user seats. If your team is larger,
+            please discuss with your account admin and we&rsquo;ll arrange an
+            extended seat agreement tailored to your company.
+          </p>
+        </div>
+      </div>
+
       <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
         <Info className="h-3 w-3" />
         Payment method (Paynow or EcoCash) is chosen on the next step, after you select a plan.

@@ -300,6 +300,18 @@ export default function UsersSettingsPage() {
         </Button>
       </PageHeader>
 
+      <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+        <UserPlus className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <div className="space-y-1">
+          <p className="font-medium">Need more user seats than your plan allows?</p>
+          <p className="text-muted-foreground">
+            Your plan has a capped number of users. To add more teammates beyond that
+            cap, please discuss with your account admin &mdash; we&rsquo;ll review and
+            arrange an extended seat agreement for you.
+          </p>
+        </div>
+      </div>
+
       <DataTable
         columns={columns}
         data={users}

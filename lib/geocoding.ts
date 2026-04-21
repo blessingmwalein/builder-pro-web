@@ -43,7 +43,7 @@ export async function searchAddresses(query: string): Promise<AddressResult[]> {
     const results = Array.isArray(data?.results) ? data.results : [];
     return results
       .map(normalizeGoogleResult)
-      .filter((item): item is AddressResult => item !== null)
+      .filter((item: AddressResult | null): item is AddressResult => item !== null)
       .slice(0, 6);
   }
 
@@ -57,6 +57,6 @@ export async function searchAddresses(query: string): Promise<AddressResult[]> {
   const results = Array.isArray(data) ? data : [];
   return results
     .map(normalizeNominatimResult)
-    .filter((item): item is AddressResult => item !== null)
+    .filter((item: AddressResult | null): item is AddressResult => item !== null)
     .slice(0, 6);
 }

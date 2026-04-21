@@ -39,6 +39,7 @@ export function BudgetEditModal({ open, onOpenChange, projectId, onSaved }: Prop
   const [newCategoryName, setNewCategoryName] = useState("");
   const [addingCategory, setAddingCategory] = useState(false);
   const [saving, setSaving] = useState(false);
+  const budgetLines = Array.isArray(projectBudget?.lines) ? projectBudget.lines : [];
 
   useEffect(() => {
     if (!open) return;
@@ -50,11 +51,11 @@ export function BudgetEditModal({ open, onOpenChange, projectId, onSaved }: Prop
   useEffect(() => {
     if (!open || !projectBudget) return;
     const next: Record<string, number> = {};
-    projectBudget.lines.forEach((line) => {
+    budgetLines.forEach((line) => {
       next[line.categoryId] = line.plannedAmount;
     });
     setValues(next);
-  }, [open, projectBudget]);
+  }, [open, projectBudget, budgetLines]);
 
   const totalPlanned = useMemo(
     () => Object.values(values).reduce((s, v) => s + (v || 0), 0),
@@ -116,7 +117,7 @@ export function BudgetEditModal({ open, onOpenChange, projectId, onSaved }: Prop
               </p>
             ) : (
               categories.map((cat) => {
-                const line = projectBudget?.lines.find((l) => l.categoryId === cat.id);
+                const line = budgetLines.find((l) => l.categoryId === cat.id);
                 return (
                   <div
                     key={cat.id}

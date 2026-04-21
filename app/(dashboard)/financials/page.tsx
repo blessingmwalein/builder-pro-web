@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Save, DollarSign, Receipt, FolderKanban, BarChart3, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Save, DollarSign, Receipt, FolderKanban, BarChart3, Trash2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { toast } from "sonner";
 import {
   fetchFinancialDashboard,
   fetchFinancialSummary,
@@ -36,6 +37,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -103,6 +114,8 @@ export default function FinancialsPage() {
   const [newBudgetCategoryId, setNewBudgetCategoryId] = useState("ALL");
   const [newBudgetPlannedAmount, setNewBudgetPlannedAmount] = useState("");
   const [newBudgetThresholdPct, setNewBudgetThresholdPct] = useState("90");
+  const [budgetSaveConfirmOpen, setBudgetSaveConfirmOpen] = useState(false);
+  const [budgetSaving, setBudgetSaving] = useState(false);
 
   const [txnDialogOpen, setTxnDialogOpen] = useState(false);
   const [txnProjectId, setTxnProjectId] = useState<string>("ALL");
@@ -112,6 +125,7 @@ export default function FinancialsPage() {
   const [txnDate, setTxnDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [txnReference, setTxnReference] = useState("");
   const [txnSourceType, setTxnSourceType] = useState("MANUAL");
+  const [txnSaving, setTxnSaving] = useState(false);
   const [transactionsPage, setTransactionsPage] = useState(1);
 
   useEffect(() => {
@@ -182,14 +196,16 @@ export default function FinancialsPage() {
 
   const normalizedSummary = useMemo(() => {
     const raw = asRecord(summary);
+    const budget = toNumber(raw.totalBudget ?? raw.budgetPlanned);
+    const spent = toNumber(raw.totalSpent ?? raw.actualCost);
     return {
-      totalRevenue: toNumber(raw.totalRevenue),
-      totalCosts: toNumber(raw.totalCosts),
-      netProfit: toNumber(raw.netProfit ?? raw.totalProfit),
-      margin: toNumber(raw.profitMargin),
-      spent: toNumber(raw.totalSpent),
-      budget: toNumber(raw.totalBudget),
-      remaining: toNumber(raw.remaining),
+      totalRevenue: toNumber(raw.totalRevenue ?? raw.revenueCollected ?? raw.revenueExpected),
+      totalCosts: toNumber(raw.totalCosts ?? raw.actualCost),
+      netProfit: toNumber(raw.netProfit ?? raw.totalProfit ?? raw.profit),
+      margin: toNumber(raw.profitMargin ?? raw.profitMarginPct),
+      spent,
+      budget,
+      remaining: toNumber(raw.remaining ?? raw.costToComplete ?? Math.max(budget - spent, 0)),
     };
   }, [summary]);
 
@@ -197,10 +213,22 @@ export default function FinancialsPage() {
     () => projects.find((p) => p.id === selectedProjectId)?.name ?? "No project selected",
     [projects, selectedProjectId]
   );
+  const selectedTxnProjectName = useMemo(
+    () => projects.find((project) => project.id === txnProjectId)?.name ?? "No project selected",
+    [projects, txnProjectId]
+  );
+  const selectedTxnCategoryName = useMemo(
+    () => categories.find((category) => category.id === txnCategoryId)?.name ?? "No category selected",
+    [categories, txnCategoryId]
+  );
 
   const availableBudgetCategories = useMemo(
     () => categories.filter((category) => !budgetDraft.some((line) => line.categoryId === category.id)),
     [categories, budgetDraft]
+  );
+  const budgetDraftTotal = useMemo(
+    () => budgetDraft.reduce((sum, line) => sum + Math.max(0, toNumber(line.plannedAmount)), 0),
+    [budgetDraft]
   );
 
   const handleCreateCategory = async () => {
@@ -214,12 +242,23 @@ export default function FinancialsPage() {
     setNewCategoryCode("");
   };
 
-  const handleOpenBudgetLineDialog = () => {
+  const handleOpenBudgetLineDialog = (preferredCategoryId?: string) => {
     if (availableBudgetCategories.length === 0) return;
-    setNewBudgetCategoryId(availableBudgetCategories[0].id);
+    const preferred = preferredCategoryId
+      ? availableBudgetCategories.find((c) => c.id === preferredCategoryId)
+      : undefined;
+    setNewBudgetCategoryId(preferred?.id ?? availableBudgetCategories[0].id);
     setNewBudgetPlannedAmount("");
     setNewBudgetThresholdPct("90");
     setBudgetLineDialogOpen(true);
+  };
+
+  const handleCategoryCardClick = (categoryId: string, categoryName: string) => {
+    if (budgetDraft.some((line) => line.categoryId === categoryId)) {
+      toast.info(`${categoryName} already exists in budget lines.`);
+      return;
+    }
+    handleOpenBudgetLineDialog(categoryId);
   };
 
   const handleCreateBudgetLine = () => {
@@ -260,46 +299,57 @@ export default function FinancialsPage() {
   const handleSaveBudget = async () => {
     if (!selectedProjectId || selectedProjectId === "ALL") return;
 
-    await dispatch(
-      updateProjectBudget({
-        projectId: selectedProjectId,
-        lines: budgetDraft.map((line) => ({
-          categoryId: line.categoryId,
-          plannedAmount: Math.max(0, toNumber(line.plannedAmount)),
-          thresholdPct: Math.max(1, Math.min(100, toNumber(line.thresholdPct))),
-        })),
-      })
-    ).unwrap();
+    setBudgetSaving(true);
+    try {
+      await dispatch(
+        updateProjectBudget({
+          projectId: selectedProjectId,
+          lines: budgetDraft.map((line) => ({
+            categoryId: line.categoryId,
+            plannedAmount: Math.max(0, toNumber(line.plannedAmount)),
+            thresholdPct: Math.max(1, Math.min(100, toNumber(line.thresholdPct))),
+          })),
+        })
+      ).unwrap();
 
-    dispatch(fetchProjectBudget(selectedProjectId));
+      setBudgetSaveConfirmOpen(false);
+      dispatch(fetchProjectBudget(selectedProjectId));
+    } finally {
+      setBudgetSaving(false);
+    }
   };
 
   const handleCreateTransaction = async () => {
     if (!txnProjectId || txnProjectId === "ALL" || !txnCategoryId || txnCategoryId === "ALL") return;
     if (!txnDescription.trim()) return;
 
-    await dispatch(
-      createTransaction({
-        projectId: txnProjectId,
-        categoryId: txnCategoryId,
-        description: txnDescription.trim(),
-        amount: toNumber(txnAmount),
-        occurredAt: txnDate,
-        reference: txnReference.trim() || undefined,
-        sourceType: txnSourceType,
-      })
-    ).unwrap();
+    setTxnSaving(true);
+    try {
+      await dispatch(
+        createTransaction({
+          projectId: txnProjectId,
+          categoryId: txnCategoryId,
+          description: txnDescription.trim(),
+          amount: toNumber(txnAmount),
+          occurredAt: txnDate,
+          reference: txnReference.trim() || undefined,
+          sourceType: txnSourceType,
+        })
+      ).unwrap();
 
-    setTxnDialogOpen(false);
-    setTxnDescription("");
-    setTxnAmount("");
-    setTxnReference("");
-    setTxnSourceType("MANUAL");
-    setTransactionsPage(1);
+      setTxnDialogOpen(false);
+      setTxnDescription("");
+      setTxnAmount("");
+      setTxnReference("");
+      setTxnSourceType("MANUAL");
+      setTransactionsPage(1);
 
-    if (selectedProjectId !== "ALL") {
-      dispatch(fetchProjectTransactions({ projectId: selectedProjectId, page: 1, limit: TRANSACTIONS_PAGE_SIZE }));
-      dispatch(fetchFinancialSummary(selectedProjectId));
+      if (selectedProjectId !== "ALL") {
+        dispatch(fetchProjectTransactions({ projectId: selectedProjectId, page: 1, limit: TRANSACTIONS_PAGE_SIZE }));
+        dispatch(fetchFinancialSummary(selectedProjectId));
+      }
+    } finally {
+      setTxnSaving(false);
     }
   };
 
@@ -330,7 +380,9 @@ export default function FinancialsPage() {
             <Label>Project</Label>
             <Select value={selectedProjectId} onValueChange={(value) => setSelectedProjectId(value ?? "ALL")}>
               <SelectTrigger>
-                <SelectValue placeholder="Select project" />
+                <SelectValue placeholder="Select project">
+                  {projects.find((project) => project.id === selectedProjectId)?.name ?? "Select project"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {projects.map((project) => (
@@ -404,10 +456,15 @@ export default function FinancialsPage() {
               ) : (
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {categories.map((category) => (
-                    <div key={category.id} className="rounded-md border p-3">
+                    <button
+                      key={category.id}
+                      type="button"
+                      className="rounded-md border p-3 text-left transition-colors hover:bg-muted/50"
+                      onClick={() => handleCategoryCardClick(category.id, category.name)}
+                    >
                       <p className="text-sm font-medium">{category.name}</p>
                       <p className="text-xs text-muted-foreground">{category.code}</p>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -420,11 +477,15 @@ export default function FinancialsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={handleOpenBudgetLineDialog} disabled={availableBudgetCategories.length === 0}>
+                <Button variant="outline" onClick={() => handleOpenBudgetLineDialog()} disabled={availableBudgetCategories.length === 0 || budgetSaving}>
                   Add Budget Line
                 </Button>
-                <Button onClick={handleSaveBudget} disabled={!selectedProjectId || selectedProjectId === "ALL" || isLoading}>
-                  <Save className="mr-2 h-4 w-4" /> Save Budget
+                <Button
+                  onClick={() => setBudgetSaveConfirmOpen(true)}
+                  disabled={!selectedProjectId || selectedProjectId === "ALL" || isLoading || budgetSaving}
+                >
+                  {budgetSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  {budgetSaving ? "Saving..." : "Save Budget"}
                 </Button>
               </div>
 
@@ -450,6 +511,7 @@ export default function FinancialsPage() {
                       <TableCell>
                         <Select
                           value={line.categoryId}
+                          disabled={budgetSaving}
                           onValueChange={(value) => {
                             if (!value) return;
                             const selected = categories.find((c) => c.id === value);
@@ -460,7 +522,9 @@ export default function FinancialsPage() {
                           }}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Category" />
+                            <SelectValue placeholder="Category">
+                              {categories.find((c) => c.id === line.categoryId)?.name ?? line.categoryName ?? "Category"}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {categories.map((c) => (
@@ -475,6 +539,7 @@ export default function FinancialsPage() {
                         <Input
                           type="number"
                           min="0"
+                          disabled={budgetSaving}
                           value={line.plannedAmount}
                           onChange={(e) => handleBudgetLineChange(idx, { plannedAmount: toNumber(e.target.value) })}
                         />
@@ -484,6 +549,7 @@ export default function FinancialsPage() {
                           type="number"
                           min="1"
                           max="100"
+                          disabled={budgetSaving}
                           value={line.thresholdPct}
                           onChange={(e) => handleBudgetLineChange(idx, { thresholdPct: toNumber(e.target.value) })}
                         />
@@ -494,6 +560,7 @@ export default function FinancialsPage() {
                           type="button"
                           variant="ghost"
                           size="icon"
+                          disabled={budgetSaving}
                           onClick={() => handleRemoveBudgetLine(idx)}
                           aria-label="Remove budget line"
                         >
@@ -618,7 +685,9 @@ export default function FinancialsPage() {
               <Label>Category</Label>
               <Select value={newBudgetCategoryId} onValueChange={(value) => setNewBudgetCategoryId(value ?? "ALL")}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder="Select category">
+                    {availableBudgetCategories.find((category) => category.id === newBudgetCategoryId)?.name ?? "Select category"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {availableBudgetCategories.map((category) => (
@@ -671,62 +740,74 @@ export default function FinancialsPage() {
           </DialogHeader>
 
           <div className="space-y-3 py-2">
-            <div className="space-y-2">
-              <Label>Project</Label>
-              <Select value={txnProjectId} onValueChange={(value) => setTxnProjectId(value ?? "ALL")}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Project</Label>
+                <Select value={txnProjectId} onValueChange={(value) => setTxnProjectId(value ?? "ALL")} disabled={txnSaving}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select project">
+                      {selectedTxnProjectName}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <Select value={txnCategoryId} onValueChange={(value) => setTxnCategoryId(value ?? "ALL")} disabled={txnSaving}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category">
+                      {selectedTxnCategoryName}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select value={txnCategoryId} onValueChange={(value) => setTxnCategoryId(value ?? "ALL")}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Selected: <span className="font-medium text-foreground">{selectedTxnProjectName}</span>
+              {" | "}
+              <span className="font-medium text-foreground">{selectedTxnCategoryName}</span>
             </div>
 
             <div className="space-y-2">
               <Label>Description</Label>
-              <Input value={txnDescription} onChange={(e) => setTxnDescription(e.target.value)} />
+              <Input value={txnDescription} onChange={(e) => setTxnDescription(e.target.value)} disabled={txnSaving} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Amount</Label>
-                <Input type="number" min="0" value={txnAmount} onChange={(e) => setTxnAmount(e.target.value)} />
+                <Input type="number" min="0" value={txnAmount} onChange={(e) => setTxnAmount(e.target.value)} disabled={txnSaving} />
               </div>
               <div className="space-y-2">
                 <Label>Date</Label>
-                <DatePickerField value={txnDate} onChange={setTxnDate} />
+                <DatePickerField value={txnDate} onChange={setTxnDate} disabled={txnSaving} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Reference</Label>
-                <Input value={txnReference} onChange={(e) => setTxnReference(e.target.value)} />
+                <Input value={txnReference} onChange={(e) => setTxnReference(e.target.value)} disabled={txnSaving} />
               </div>
               <div className="space-y-2">
                 <Label>Source Type</Label>
-                <Select value={txnSourceType} onValueChange={(value) => setTxnSourceType(value ?? "MANUAL")}>
+                <Select value={txnSourceType} onValueChange={(value) => setTxnSourceType(value ?? "MANUAL")} disabled={txnSaving}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select source type" />
                   </SelectTrigger>
@@ -743,11 +824,36 @@ export default function FinancialsPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setTxnDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateTransaction}>Save Transaction</Button>
+            <Button variant="outline" onClick={() => setTxnDialogOpen(false)} disabled={txnSaving}>Cancel</Button>
+            <Button
+              onClick={handleCreateTransaction}
+              disabled={txnSaving || !txnProjectId || txnProjectId === "ALL" || !txnCategoryId || txnCategoryId === "ALL" || !txnDescription.trim()}
+            >
+              {txnSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {txnSaving ? "Saving..." : "Save Transaction"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={budgetSaveConfirmOpen} onOpenChange={setBudgetSaveConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save budget changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will update {budgetDraft.length} budget line item{budgetDraft.length === 1 ? "" : "s"} for the selected project.
+              Total planned budget: {formatCurrency(budgetDraftTotal)}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={budgetSaving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleSaveBudget()} disabled={budgetSaving}>
+              {budgetSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {budgetSaving ? "Saving..." : "Confirm Save"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

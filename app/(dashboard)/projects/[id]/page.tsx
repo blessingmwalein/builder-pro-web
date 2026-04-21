@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Calendar,
   CheckSquare,
+  CheckCircle2,
   Clock,
   DollarSign,
   AlertTriangle,
@@ -69,6 +70,8 @@ import {
 } from "@/components/ui/select";
 import { DatePickerField } from "@/components/shared/date-picker-field";
 import { BudgetEditModal } from "@/components/financials/budget-edit-modal";
+import { UnexpectedCostModal } from "@/components/financials/unexpected-cost-modal";
+import { CloseProjectModal } from "@/components/projects/close-project-modal";
 import { searchAddresses, type AddressResult } from "@/lib/geocoding";
 import { fetchProjectBudget } from "@/store/slices/financialsSlice";
 
@@ -403,6 +406,8 @@ export default function ProjectDetailPage() {
   const [memberModalOpen, setMemberModalOpen] = useState(false);
   const [clockInModalOpen, setClockInModalOpen] = useState(false);
   const [budgetModalOpen, setBudgetModalOpen] = useState(false);
+  const [unexpectedCostOpen, setUnexpectedCostOpen] = useState(false);
+  const [closeProjectOpen, setCloseProjectOpen] = useState(false);
   const [clockOutModalOpen, setClockOutModalOpen] = useState(false);
   const [manualEntryModalOpen, setManualEntryModalOpen] = useState(false);
 
@@ -677,6 +682,16 @@ export default function ProjectDetailPage() {
         <Button size="sm" variant="outline" onClick={() => setInvoiceModalOpen(true)}>
           <Receipt className="mr-2 h-4 w-4" /> New Invoice
         </Button>
+        {view.project.status !== "COMPLETED" && view.project.status !== "ARCHIVED" && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+            onClick={() => setCloseProjectOpen(true)}
+          >
+            <CheckCircle2 className="mr-2 h-4 w-4" /> Close Project
+          </Button>
+        )}
         <StatusBadge status={view.project.status} />
       </PageHeader>
 
@@ -868,6 +883,13 @@ export default function ProjectDetailPage() {
             <Button variant="outline" onClick={() => router.push(`/quotes?projectId=${projectId}`)}>View Quotes</Button>
             <Button onClick={() => setInvoiceModalOpen(true)}><Plus className="mr-2 h-4 w-4" /> Create Invoice</Button>
             <Button variant="outline" onClick={() => router.push(`/invoices?projectId=${projectId}`)}>View Invoices</Button>
+            <Button
+              variant="outline"
+              className="border-amber-500/40 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+              onClick={() => setUnexpectedCostOpen(true)}
+            >
+              <AlertTriangle className="mr-2 h-4 w-4" /> Record Unexpected Cost
+            </Button>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1185,6 +1207,24 @@ export default function ProjectDetailPage() {
         open={budgetModalOpen}
         onOpenChange={setBudgetModalOpen}
         projectId={projectId}
+      />
+
+      <UnexpectedCostModal
+        open={unexpectedCostOpen}
+        onOpenChange={setUnexpectedCostOpen}
+        projectId={projectId}
+        onSaved={() => {
+          void dispatch(fetchProjectDashboard(projectId));
+        }}
+      />
+
+      <CloseProjectModal
+        open={closeProjectOpen}
+        onOpenChange={setCloseProjectOpen}
+        projectId={projectId}
+        onClosed={() => {
+          void dispatch(fetchProjectDashboard(projectId));
+        }}
       />
     </div>
   );
