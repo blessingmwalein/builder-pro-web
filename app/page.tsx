@@ -1,5 +1,27 @@
-import { redirect } from "next/navigation";
+import { Navbar } from "@/components/landing/navbar";
+import { Hero } from "@/components/landing/hero";
+import { Stats } from "@/components/landing/stats";
+import { Features } from "@/components/landing/features";
+import { HowItWorks } from "@/components/landing/how-it-works";
+import { Pricing } from "@/components/landing/pricing";
+import { Testimonials } from "@/components/landing/testimonials";
+import { CTA } from "@/components/landing/cta";
+import { Footer } from "@/components/landing/footer";
+import { ChatFAB } from "@/components/landing/chat-fab";
 
 export default function Home() {
-  redirect("/login");
+  return (
+    <main>
+      <Navbar />
+      <Hero />
+      <Stats />
+      <Features />
+      <HowItWorks />
+      <Pricing />
+      <Testimonials />
+      <CTA />
+      <Footer />
+      <ChatFAB />
+    </main>
+  );
 }

@@ -150,9 +150,32 @@ export const logMaterialUsageSchema = z.object({
   notes: z.string().optional(),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("Enter a valid email"),
+});
+
+export const resetPasswordSchema = z
+  .object({
+    email: z.string().email("Enter a valid email"),
+    otp: z.string().length(6, "OTP must be 6 digits"),
+    password: z
+      .string()
+      .min(8, "At least 8 characters")
+      .regex(/[A-Z]/, "Must include an uppercase letter")
+      .regex(/[0-9]/, "Must include a number")
+      .regex(/[^A-Za-z0-9]/, "Must include a special character"),
+    confirmPassword: z.string(),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
+
 // Use z.output for form data types since z.coerce transforms input types
 export type LoginFormData = z.output<typeof loginSchema>;
 export type RegisterFormData = z.output<typeof registerSchema>;
+export type ForgotPasswordFormData = z.output<typeof forgotPasswordSchema>;
+export type ResetPasswordFormData = z.output<typeof resetPasswordSchema>;
 export type CreateProjectFormData = z.output<typeof createProjectSchema>;
 export type CreateTaskFormData = z.output<typeof createTaskSchema>;
 export type CreateClientFormData = z.output<typeof createClientSchema>;

@@ -80,7 +80,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         <p className="relative z-10 text-xs text-sidebar-foreground/50">
-          &copy; {new Date().getFullYear()} ownit2buildit. Built for Zimbabwe &amp; Southern Africa.
+          &copy; {new Date().getFullYear()} ownit2buildit. Built for construction professionals worldwide.
         </p>
       </div>
 

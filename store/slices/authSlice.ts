@@ -7,6 +7,10 @@ import type {
   RegisterRequest,
   RegisterResponse,
   MeResponse,
+  ForgotPasswordRequest,
+  ForgotPasswordResponse,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
 } from "@/types";
 
 const initialState: AuthState = {
@@ -44,6 +48,20 @@ export const register = createAsyncThunk(
 export const fetchMe = createAsyncThunk("auth/fetchMe", async () => {
   return api.get<MeResponse>("/auth/me");
 });
+
+export const forgotPassword = createAsyncThunk(
+  "auth/forgotPassword",
+  async (payload: ForgotPasswordRequest) => {
+    return api.public.post<ForgotPasswordResponse>("/auth/forgot-password", payload);
+  }
+);
+
+export const resetPassword = createAsyncThunk(
+  "auth/resetPassword",
+  async (payload: ResetPasswordRequest) => {
+    return api.public.post<ResetPasswordResponse>("/auth/reset-password", payload);
+  }
+);
 
 export const authSlice = createSlice({
   name: "auth",
