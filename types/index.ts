@@ -715,7 +715,15 @@ export interface Message {
   body: string;
   senderId: string;
   sender?: User;
+  attachments?: MessageAttachment[];
   createdAt: string;
+}
+
+export interface MessageAttachment {
+  fileKey: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
 }
 
 // ---- Notifications ----

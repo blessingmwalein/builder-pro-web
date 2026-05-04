@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { Send, Plus, MessageSquare, Hash, User } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Hash, MessageSquare, User, UserPlus, X } from "lucide-react";
 import { useAppDispatch, useAppSelector, useAuth } from "@/lib/hooks";
 import {
   fetchConversations,
@@ -9,26 +9,38 @@ import {
   sendMessage,
   markConversationRead,
   setCurrentConversation,
+  addConversationParticipants,
+  removeConversationParticipants,
 } from "@/store/slices/messagingSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import type { Conversation } from "@/types";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { fetchEmployees } from "@/store/slices/employeesSlice";
+import type { Conversation, MessageAttachment } from "@/types";
+import { CreateConversationDialog } from "@/components/messaging/CreateConversationDialog";
+import { MessageInput } from "@/components/messaging/MessageInput";
 
 export default function MessagingPage() {
   const dispatch = useAppDispatch();
   const { user } = useAuth();
   const { conversations, currentConversation, messages } = useAppSelector((s) => s.messaging);
-  const [newMessage, setNewMessage] = useState("");
+  const employees = useAppSelector((s) => s.employees.items);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isManageOpen, setIsManageOpen] = useState(false);
+  const [participantSearch, setParticipantSearch] = useState("");
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
+  const [isParticipantsLoading, setIsParticipantsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     dispatch(fetchConversations());
+    dispatch(fetchEmployees({ limit: 200 }));
   }, [dispatch]);
 
   useEffect(() => {
@@ -43,15 +55,98 @@ export default function MessagingPage() {
     if (conv.unreadCount > 0) dispatch(markConversationRead(conv.id));
   }
 
-  function handleSend() {
-    if (!newMessage.trim() || !currentConversation) return;
-    dispatch(sendMessage({ conversationId: currentConversation.id, body: newMessage }));
-    setNewMessage("");
+  function handleSend(text: string, attachments?: MessageAttachment[]) {
+    if (!currentConversation) return;
+    dispatch(sendMessage({ conversationId: currentConversation.id, body: text, attachments }));
   }
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  const formatMessageWithMentions = (text: string) => {
+    const parts = text.split(/(@\w+)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("@")) {
+        return (
+          <span key={i} className="text-blue-500 dark:text-blue-400 font-semibold">
+            {part}
+          </span>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  const currentParticipantIds = useMemo(
+    () => new Set(currentConversation?.participants?.map((p) => p.id) ?? []),
+    [currentConversation]
+  );
+
+  const filteredEmployees = useMemo(() => {
+    const query = participantSearch.toLowerCase();
+    return employees.filter((emp) => {
+      const userId = emp.user?.id;
+      if (!emp.user || !userId || userId === user?.id) return false;
+      if (currentParticipantIds.has(userId)) return false;
+      return (
+        emp.user.firstName.toLowerCase().includes(query) ||
+        emp.user.lastName.toLowerCase().includes(query) ||
+        emp.user.email.toLowerCase().includes(query)
+      );
+    });
+  }, [employees, participantSearch, currentParticipantIds, user?.id]);
+
+  function toggleParticipant(userId: string) {
+    setSelectedParticipants((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  }
+
+  async function handleAddParticipants() {
+    if (!currentConversation || selectedParticipants.length === 0) return;
+    setIsParticipantsLoading(true);
+    try {
+      await dispatch(
+        addConversationParticipants({
+          conversationId: currentConversation.id,
+          userIds: selectedParticipants,
+        })
+      ).unwrap();
+      setSelectedParticipants([]);
+      setParticipantSearch("");
+    } finally {
+      setIsParticipantsLoading(false);
+    }
+  }
+
+  async function handleRemoveParticipant(userId: string) {
+    if (!currentConversation) return;
+    setIsParticipantsLoading(true);
+    try {
+      await dispatch(
+        removeConversationParticipants({
+          conversationId: currentConversation.id,
+          userIds: [userId],
+        })
+      ).unwrap();
+    } finally {
+      setIsParticipantsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!isManageOpen) return;
+    dispatch(fetchEmployees({ limit: 200 }));
+  }, [dispatch, isManageOpen]);
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Messages" description="Project and team communication." />
+      <PageHeader title="Messages" description="Project and team communication.">
+        <Button onClick={() => setIsCreateOpen(true)}>New Chat</Button>
+      </PageHeader>
 
       <Card className="flex h-[calc(100vh-220px)] overflow-hidden">
         {/* Sidebar - Conversations */}
@@ -105,7 +200,7 @@ export default function MessagingPage() {
           {currentConversation ? (
             <>
               {/* Header */}
-              <div className="flex items-center gap-3 border-b px-4 py-3">
+              <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
                   {currentConversation.type === "PROJECT" ? (
                     <Hash className="h-4 w-4 text-primary" />
@@ -113,12 +208,16 @@ export default function MessagingPage() {
                     <User className="h-4 w-4 text-primary" />
                   )}
                 </div>
-                <div>
-                  <p className="text-sm font-semibold">{currentConversation.title || "Direct Message"}</p>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{currentConversation.title || "Direct Message"}</p>
                   <p className="text-xs text-muted-foreground">
                     {currentConversation.participants?.length || 0} members
                   </p>
                 </div>
+                <Button variant="outline" size="sm" onClick={() => setIsManageOpen(true)}>
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Manage
+                </Button>
               </div>
 
               {/* Messages */}
@@ -145,8 +244,21 @@ export default function MessagingPage() {
                           <div className={`rounded-lg px-3 py-2 text-sm ${
                             isMe ? "bg-primary text-primary-foreground" : "bg-muted"
                           }`}>
-                            {msg.body}
+                            {formatMessageWithMentions(msg.body)}
                           </div>
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {msg.attachments.map((item) => (
+                                <div
+                                  key={item.fileKey}
+                                  className="flex items-center justify-between rounded-md border px-2 py-1 text-xs"
+                                >
+                                  <span className="max-w-[220px] truncate">{item.fileName}</span>
+                                  <span className="text-muted-foreground">{formatBytes(item.sizeBytes)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -155,22 +267,7 @@ export default function MessagingPage() {
               </ScrollArea>
 
               {/* Input */}
-              <div className="border-t p-4">
-                <form
-                  onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-                  className="flex gap-2"
-                >
-                  <Input
-                    placeholder="Type a message..."
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button type="submit" disabled={!newMessage.trim()}>
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </form>
-              </div>
+              <MessageInput conversation={currentConversation} onSend={handleSend} />
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center">
@@ -182,6 +279,96 @@ export default function MessagingPage() {
           )}
         </div>
       </Card>
+
+      <CreateConversationDialog open={isCreateOpen} onOpenChange={setIsCreateOpen} />
+
+      <Dialog open={isManageOpen} onOpenChange={setIsManageOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Manage Participants</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <Label>Current Participants</Label>
+              <div className="space-y-2">
+                {(currentConversation?.participants || []).map((participant) => (
+                  <div
+                    key={participant.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">
+                        {participant.firstName} {participant.lastName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{participant.email}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={isParticipantsLoading || participant.id === user?.id}
+                      onClick={() => handleRemoveParticipant(participant.id)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {(currentConversation?.participants?.length || 0) === 0 && (
+                  <p className="text-sm text-muted-foreground">No participants yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label>Add Participants</Label>
+              <Input
+                placeholder="Search team members..."
+                value={participantSearch}
+                onChange={(e) => setParticipantSearch(e.target.value)}
+              />
+              <ScrollArea className="h-48 rounded-md border">
+                <div className="p-2 space-y-1">
+                  {filteredEmployees.map((emp) => (
+                    <button
+                      key={emp.id}
+                      type="button"
+                      onClick={() => toggleParticipant(emp.user!.id)}
+                      className={`flex w-full items-center justify-between rounded-md px-2 py-2 text-left hover:bg-muted/50 ${
+                        selectedParticipants.includes(emp.user!.id) ? "bg-muted" : ""
+                      }`}
+                    >
+                      <div>
+                        <p className="text-sm font-medium">
+                          {emp.user!.firstName} {emp.user!.lastName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{emp.user!.email}</p>
+                      </div>
+                      {selectedParticipants.includes(emp.user!.id) && (
+                        <Badge variant="secondary">Selected</Badge>
+                      )}
+                    </button>
+                  ))}
+                  {filteredEmployees.length === 0 && (
+                    <p className="py-4 text-center text-sm text-muted-foreground">No matching users</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsManageOpen(false)}>
+              Done
+            </Button>
+            <Button
+              onClick={handleAddParticipants}
+              disabled={isParticipantsLoading || selectedParticipants.length === 0}
+            >
+              Add Selected
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

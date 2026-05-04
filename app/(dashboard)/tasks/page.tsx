@@ -41,6 +41,7 @@ import type { Task, TaskPriority, TaskStatus, User as AppUser, PaginatedResponse
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge, PriorityBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { GanttChart } from "@/components/shared/gantt-chart";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,14 +85,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePickerField } from "@/components/shared/date-picker-field";
 
@@ -428,8 +421,8 @@ export default function TasksPage() {
           <TabsTrigger value="kanban" className="gap-1.5 text-xs">
             <Columns3 className="h-3.5 w-3.5" /> Kanban
           </TabsTrigger>
-          <TabsTrigger value="list" className="gap-1.5 text-xs">
-            <ListTodo className="h-3.5 w-3.5" /> List
+          <TabsTrigger value="gantt" className="gap-1.5 text-xs">
+            <ListTodo className="h-3.5 w-3.5" /> Gantt
           </TabsTrigger>
           <TabsTrigger value="queue" className="gap-1.5 text-xs">
             <User className="h-3.5 w-3.5" /> My Queue
@@ -527,7 +520,7 @@ export default function TasksPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="list">
+        <TabsContent value="gantt">
           {filteredTasks.length === 0 && !isLoading ? (
             <EmptyState
               icon={ListTodo}
@@ -538,45 +531,8 @@ export default function TasksPage() {
             />
           ) : (
             <Card>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Title</TableHead>
-                      <TableHead>Project</TableHead>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Assignees</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead className="text-right">Est. Hours</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTasks.map((task) => (
-                      <TableRow key={task.id} className="cursor-pointer" onClick={() => openTask(task.id)}>
-                        <TableCell className="max-w-[250px] truncate font-medium">{task.title}</TableCell>
-                        <TableCell className="text-muted-foreground">{task.project?.name || "--"}</TableCell>
-                        <TableCell><PriorityBadge priority={task.priority} /></TableCell>
-                        <TableCell><StatusBadge status={task.status} /></TableCell>
-                        <TableCell><AssigneeAvatars assignees={task.assignees} maxShow={3} /></TableCell>
-                        <TableCell>
-                          <span
-                            className={
-                              task.status !== "DONE" && isOverdue(task.dueDate)
-                                ? "font-medium text-destructive"
-                                : "text-muted-foreground"
-                            }
-                          >
-                            {formatDate(task.dueDate)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {task.estimatedHours != null ? `${task.estimatedHours}h` : "--"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <CardContent className="pt-6">
+                <GanttChart tasks={filteredTasks} onTaskClick={openTask} />
               </CardContent>
             </Card>
           )}

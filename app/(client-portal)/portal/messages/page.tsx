@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { Send, MessageSquare, Hash } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { MessageSquare, Hash } from "lucide-react";
 import { useAppDispatch, useAppSelector, useAuth } from "@/lib/hooks";
 import { fetchConversations, fetchMessages, sendMessage, setCurrentConversation, markConversationRead } from "@/store/slices/messagingSlice";
+import { fetchEmployees } from "@/store/slices/employeesSlice";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Conversation, Message } from "@/types";
+import type { Conversation, MessageAttachment } from "@/types";
 import { CreateConversationDialog } from "@/components/messaging/CreateConversationDialog";
 import { MessageInput } from "@/components/messaging/MessageInput";
 
@@ -20,7 +21,10 @@ export default function ClientMessagesPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { dispatch(fetchConversations()); }, [dispatch]);
+  useEffect(() => {
+    dispatch(fetchConversations());
+    dispatch(fetchEmployees({ limit: 200 }));
+  }, [dispatch]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
   function select(conv: Conversation) {
@@ -31,9 +35,15 @@ export default function ClientMessagesPage() {
     }
   }
 
-  function handleSend(text: string) {
-    if (!text.trim() || !currentConversation) return;
-    dispatch(sendMessage({ conversationId: currentConversation.id, body: text }));
+  function handleSend(text: string, attachments?: MessageAttachment[]) {
+    if (!currentConversation) return;
+    dispatch(sendMessage({ conversationId: currentConversation.id, body: text, attachments }));
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   const formatMessageWithMentions = (text: string) => {
@@ -109,6 +119,19 @@ export default function ClientMessagesPage() {
                           >
                             {formatMessageWithMentions(msg.body)}
                           </div>
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {msg.attachments.map((item) => (
+                                <div
+                                  key={item.fileKey}
+                                  className="flex items-center justify-between rounded-md border px-2 py-1 text-xs"
+                                >
+                                  <span className="max-w-[220px] truncate">{item.fileName}</span>
+                                  <span className="text-muted-foreground">{formatBytes(item.sizeBytes)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <span className="text-[10px] text-muted-foreground mt-1 mx-1">
                             {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>

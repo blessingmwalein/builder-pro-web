@@ -72,6 +72,7 @@ import { DatePickerField } from "@/components/shared/date-picker-field";
 import { BudgetEditModal } from "@/components/financials/budget-edit-modal";
 import { UnexpectedCostModal } from "@/components/financials/unexpected-cost-modal";
 import { CloseProjectModal } from "@/components/projects/close-project-modal";
+import { GanttChart } from "@/components/shared/gantt-chart";
 import { searchAddresses, type AddressResult } from "@/lib/geocoding";
 import { fetchProjectBudget } from "@/store/slices/financialsSlice";
 
@@ -795,6 +796,15 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="tasks" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Task Timeline</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <GanttChart tasks={projectTasks} />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-base">Task Breakdown</CardTitle>

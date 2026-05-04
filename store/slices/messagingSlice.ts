@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import api from "@/lib/api";
-import type { Conversation, Message, PaginatedResponse } from "@/types";
+import type { Conversation, Message, PaginatedResponse, MessageAttachment } from "@/types";
 
 interface MessagingState {
   conversations: Conversation[];
@@ -37,8 +37,37 @@ export const fetchMessages = createAsyncThunk(
 
 export const sendMessage = createAsyncThunk(
   "messaging/sendMessage",
-  async ({ conversationId, body }: { conversationId: string; body: string }) =>
-    api.post<Message>("/messaging/messages", { conversationId, body })
+  async ({
+    conversationId,
+    body,
+    attachments,
+  }: {
+    conversationId: string;
+    body: string;
+    attachments?: MessageAttachment[];
+  }) => api.post<Message>("/messaging/messages", { conversationId, body, attachments })
+);
+
+export const addConversationParticipants = createAsyncThunk(
+  "messaging/addParticipants",
+  async ({ conversationId, userIds }: { conversationId: string; userIds: string[] }) => {
+    const conversation = await api.post<Conversation>(
+      `/messaging/conversations/${conversationId}/participants`,
+      { userIds }
+    );
+    return conversation;
+  }
+);
+
+export const removeConversationParticipants = createAsyncThunk(
+  "messaging/removeParticipants",
+  async ({ conversationId, userIds }: { conversationId: string; userIds: string[] }) => {
+    const conversation = await api.put<Conversation>(
+      `/messaging/conversations/${conversationId}/participants/remove`,
+      { userIds }
+    );
+    return conversation;
+  }
 );
 
 export const markConversationRead = createAsyncThunk(
@@ -77,6 +106,22 @@ const messagingSlice = createSlice({
       })
       .addCase(sendMessage.fulfilled, (state, { payload }) => {
         state.messages.push(payload);
+      })
+      .addCase(addConversationParticipants.fulfilled, (state, { payload }) => {
+        if (!payload) return;
+        const idx = state.conversations.findIndex((c) => c.id === payload.id);
+        if (idx >= 0) state.conversations[idx] = payload;
+        if (state.currentConversation?.id === payload.id) {
+          state.currentConversation = payload;
+        }
+      })
+      .addCase(removeConversationParticipants.fulfilled, (state, { payload }) => {
+        if (!payload) return;
+        const idx = state.conversations.findIndex((c) => c.id === payload.id);
+        if (idx >= 0) state.conversations[idx] = payload;
+        if (state.currentConversation?.id === payload.id) {
+          state.currentConversation = payload;
+        }
       })
       .addCase(markConversationRead.fulfilled, (state, { payload }) => {
         const conv = state.conversations.find((c) => c.id === payload);
