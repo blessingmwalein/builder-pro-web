@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Package, Plus, AlertTriangle, ShoppingCart, UserPlus, Loader2, Filter, X } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  Package, Plus, AlertTriangle, ShoppingCart, UserPlus, Loader2,
+  Filter, X, FileText, Truck, ClipboardList, Tag, Trash2, Pencil,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
 import {
-  fetchMaterials,
-  fetchLowStock,
-  fetchSuppliers,
-  createMaterial,
-  logMaterialUsage,
-  fetchMaterialCategories,
+  fetchMaterials, fetchLowStock, fetchSuppliers, createMaterial,
+  updateMaterial, deleteMaterial,
+  logMaterialUsage, fetchMaterialCategories, createMaterialCategory,
 } from "@/store/slices/materialsSlice";
 import { fetchProjects } from "@/store/slices/projectsSlice";
 import { PageHeader } from "@/components/shared/page-header";
@@ -23,15 +24,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { SupplierFormModal } from "@/components/materials/supplier-form-modal";
 import { BulkPurchaseModal } from "@/components/materials/bulk-purchase-modal";
 import { MaterialViewDrawer } from "@/components/materials/material-view-drawer";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import type { Material } from "@/types";
+import api from "@/lib/api";
 
 export default function MaterialsPage() {
   const dispatch = useAppDispatch();
+  const searchParams = useSearchParams();
   const formatCurrency = useFormatCurrency();
   const { items, total, lowStock, suppliers, categories, isLoading } = useAppSelector((s) => s.materials);
   const { items: projects } = useAppSelector((s) => s.projects);
@@ -41,8 +45,219 @@ export default function MaterialsPage() {
   const [showLog, setShowLog] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [showBulkPurchase, setShowBulkPurchase] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
-  // Add material form state
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "inventory");
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab) setActiveTab(tab);
+  }, [searchParams]);
+
+  // ─── Procurement types ────────────────────────────────────────────────────────
+
+  type PrStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED" | "ORDERED";
+  type PoStatus = "DRAFT" | "SENT" | "PARTIAL" | "RECEIVED" | "CANCELLED";
+
+  interface PrItem {
+    id: string; description: string; quantity: number; unit: string;
+    estimatedUnitCost?: number; materialId?: string;
+    material?: { id: string; name: string; unit: string };
+  }
+
+  interface PurchaseRequest {
+    id: string; prNumber: string; status: PrStatus; notes?: string; createdAt: string;
+    requestedBy: { id: string; firstName: string; lastName: string };
+    approvedBy?: { id: string; firstName: string; lastName: string };
+    project?: { id: string; name: string };
+    items: PrItem[]; _count?: { items: number; orders: number };
+  }
+
+  interface PoItem {
+    id: string; description: string; quantity: number; unitCost: number; totalCost: number;
+    materialId?: string; material?: { id: string; name: string; unit: string };
+  }
+
+  interface PurchaseOrder {
+    id: string; poNumber: string; status: PoStatus; totalAmount: number;
+    expectedDelivery?: string; deliveredAt?: string; notes?: string; createdAt: string;
+    supplier: { id: string; name: string };
+    purchaseRequest?: { id: string; prNumber: string };
+    items: PoItem[]; deliveryNotes?: { id: string; deliveryDate: string }[];
+    _count?: { items: number; deliveryNotes: number };
+  }
+
+  interface DeliveryNote {
+    id: string; deliveryDate: string; notes?: string; createdAt: string;
+    purchaseOrder: { id: string; poNumber: string; supplier?: { name: string } };
+    receivedBy: { id: string; firstName: string; lastName: string };
+    _count?: { items: number };
+  }
+
+  const [prs, setPrs] = useState<PurchaseRequest[]>([]);
+  const [pos, setPos] = useState<PurchaseOrder[]>([]);
+  const [deliveries, setDeliveries] = useState<DeliveryNote[]>([]);
+  const [procurementLoading, setProcurementLoading] = useState(false);
+  const [procSubTab, setProcSubTab] = useState("prs");
+
+  // ─── PR form ──────────────────────────────────────────────────────────────────
+  const [showPrForm, setShowPrForm] = useState(false);
+  const [prNotes, setPrNotes] = useState("");
+  const [prProjectId, setPrProjectId] = useState("");
+  const [prItems, setPrItems] = useState([{ description: "", quantity: "", unit: "", estimatedUnitCost: "", materialId: "" }]);
+  const [savingPr, setSavingPr] = useState(false);
+
+  // ─── PO form ──────────────────────────────────────────────────────────────────
+  const [showPoForm, setShowPoForm] = useState(false);
+  const [poSupplierId, setPoSupplierId] = useState("");
+  const [poPrId, setPoPrId] = useState("");
+  const [poExpected, setPoExpected] = useState("");
+  const [poNotes, setPoNotes] = useState("");
+  const [poItems, setPoItems] = useState([{ description: "", quantity: "", unitCost: "", materialId: "" }]);
+  const [savingPo, setSavingPo] = useState(false);
+
+  // ─── Delivery form ────────────────────────────────────────────────────────────
+  const [showDeliveryForm, setShowDeliveryForm] = useState(false);
+  const [deliveryPoId, setDeliveryPoId] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split("T")[0]);
+  const [deliveryNotes, setDeliveryNotes] = useState("");
+  const [deliveryItems, setDeliveryItems] = useState([{ description: "", quantityOrdered: "", quantityReceived: "", materialId: "" }]);
+  const [savingDelivery, setSavingDelivery] = useState(false);
+
+  const loadProcurement = useCallback(async () => {
+    setProcurementLoading(true);
+    try {
+      const [prRes, poRes, dnRes] = await Promise.all([
+        api.get<{ items: PurchaseRequest[] }>("/procurement/purchase-requests", { limit: 50 }),
+        api.get<{ items: PurchaseOrder[] }>("/procurement/purchase-orders", { limit: 50 }),
+        api.get<{ items: DeliveryNote[] }>("/procurement/deliveries", { limit: 50 }),
+      ]);
+      setPrs(prRes.items ?? []);
+      setPos(poRes.items ?? []);
+      setDeliveries(dnRes.items ?? []);
+    } catch {
+      // silently fail if procurement tables not yet available
+    } finally {
+      setProcurementLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "procurement") loadProcurement();
+  }, [activeTab, loadProcurement]);
+
+  async function handleCreatePR() {
+    setSavingPr(true);
+    try {
+      await api.post("/procurement/purchase-requests", {
+        projectId: prProjectId || undefined,
+        notes: prNotes || undefined,
+        items: prItems.map((i) => ({
+          description: i.description,
+          quantity: parseFloat(i.quantity),
+          unit: i.unit,
+          estimatedUnitCost: i.estimatedUnitCost ? parseFloat(i.estimatedUnitCost) : undefined,
+          materialId: i.materialId || undefined,
+        })),
+      });
+      toast.success("Purchase request created");
+      setShowPrForm(false);
+      setPrNotes(""); setPrProjectId("");
+      setPrItems([{ description: "", quantity: "", unit: "", estimatedUnitCost: "", materialId: "" }]);
+      loadProcurement();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create PR");
+    } finally {
+      setSavingPr(false);
+    }
+  }
+
+  async function handleCreatePO() {
+    setSavingPo(true);
+    try {
+      await api.post("/procurement/purchase-orders", {
+        supplierId: poSupplierId,
+        purchaseRequestId: poPrId || undefined,
+        expectedDelivery: poExpected || undefined,
+        notes: poNotes || undefined,
+        items: poItems.map((i) => ({
+          description: i.description,
+          quantity: parseFloat(i.quantity),
+          unitCost: parseFloat(i.unitCost),
+          materialId: i.materialId || undefined,
+        })),
+      });
+      toast.success("Purchase order created");
+      setShowPoForm(false);
+      setPoSupplierId(""); setPoPrId(""); setPoExpected(""); setPoNotes("");
+      setPoItems([{ description: "", quantity: "", unitCost: "", materialId: "" }]);
+      loadProcurement();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create PO");
+    } finally {
+      setSavingPo(false);
+    }
+  }
+
+  async function handleRecordDelivery() {
+    setSavingDelivery(true);
+    try {
+      await api.post(`/procurement/purchase-orders/${deliveryPoId}/deliver`, {
+        deliveryDate,
+        notes: deliveryNotes || undefined,
+        items: deliveryItems.map((i) => ({
+          description: i.description,
+          quantityOrdered: parseFloat(i.quantityOrdered),
+          quantityReceived: parseFloat(i.quantityReceived),
+          materialId: i.materialId || undefined,
+        })),
+      });
+      toast.success("Delivery recorded — stock updated");
+      setShowDeliveryForm(false);
+      setDeliveryPoId(""); setDeliveryNotes("");
+      setDeliveryDate(new Date().toISOString().split("T")[0]);
+      setDeliveryItems([{ description: "", quantityOrdered: "", quantityReceived: "", materialId: "" }]);
+      loadProcurement();
+      dispatch(fetchMaterials({ page, limit: 20 }));
+      dispatch(fetchLowStock());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to record delivery");
+    } finally {
+      setSavingDelivery(false);
+    }
+  }
+
+  async function handlePrAction(id: string, action: "submit" | "approve" | "reject") {
+    try {
+      await api.post(`/procurement/purchase-requests/${id}/${action}`, {});
+      toast.success(`PR ${action}d`);
+      loadProcurement();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Failed to ${action} PR`);
+    }
+  }
+
+  async function handleSendPO(id: string) {
+    try {
+      await api.post(`/procurement/purchase-orders/${id}/send`, {});
+      toast.success("PO marked as sent");
+      loadProcurement();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send PO");
+    }
+  }
+
+  const PR_STATUS_COLORS: Record<PrStatus, string> = {
+    DRAFT: "secondary", SUBMITTED: "default", APPROVED: "outline",
+    REJECTED: "destructive", ORDERED: "default",
+  } as const;
+
+  const PO_STATUS_COLORS: Record<PoStatus, string> = {
+    DRAFT: "secondary", SENT: "default", PARTIAL: "outline",
+    RECEIVED: "outline", CANCELLED: "destructive",
+  } as const;
+
+  // ─── Add / Edit Material state ────────────────────────────────────────────────
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState("");
   const [newCost, setNewCost] = useState("");
@@ -52,65 +267,88 @@ export default function MaterialsPage() {
   const [newReorderAt, setNewReorderAt] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newStock, setNewStock] = useState("0");
+  const [editReason, setEditReason] = useState("");
+  const [editMaterial, setEditMaterial] = useState<Material | null>(null);
   const [creatingMaterial, setCreatingMaterial] = useState(false);
 
-  // Filters + view drawer
+  // ─── Delete confirmation state ────────────────────────────────────────────────
+  const [materialToDelete, setMaterialToDelete] = useState<Material | null>(null);
+
+  // ─── Category management state ────────────────────────────────────────────────
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatCode, setNewCatCode] = useState("");
+  const [creatingCat, setCreatingCat] = useState(false);
+
+  // ─── Filters ──────────────────────────────────────────────────────────────────
   const [filterCategoryId, setFilterCategoryId] = useState("");
   const [filterSupplierId, setFilterSupplierId] = useState("");
   const [filterLowStock, setFilterLowStock] = useState(false);
   const [viewMaterialId, setViewMaterialId] = useState<string | null>(null);
 
-  // Log usage form state
+  // ─── Bulk log usage state ─────────────────────────────────────────────────────
   const [logProjectId, setLogProjectId] = useState("");
-  const [logMaterialId, setLogMaterialId] = useState("");
-  const [logQty, setLogQty] = useState("");
-  const [logCost, setLogCost] = useState("");
-  const [logNotes, setLogNotes] = useState("");
+  const [logDate, setLogDate] = useState(new Date().toISOString().split("T")[0]);
+  type LogLine = { materialId: string; qty: string; unitCost: string; notes: string };
+  const emptyLogLine = (): LogLine => ({ materialId: "", qty: "", unitCost: "", notes: "" });
+  const [logLines, setLogLines] = useState<LogLine[]>([emptyLogLine()]);
+  const [savingLog, setSavingLog] = useState(false);
 
   useEffect(() => {
-    dispatch(
-      fetchMaterials({
-        page,
-        limit: 20,
-        search: search || undefined,
-        categoryId: filterCategoryId || undefined,
-        supplierId: filterSupplierId || undefined,
-        lowStock: filterLowStock || undefined,
-      }),
-    );
+    dispatch(fetchMaterials({
+      page, limit: 20,
+      search: search || undefined,
+      categoryId: filterCategoryId || undefined,
+      supplierId: filterSupplierId || undefined,
+      lowStock: filterLowStock || undefined,
+    }));
     dispatch(fetchLowStock());
     dispatch(fetchSuppliers({}));
     dispatch(fetchProjects({ limit: 100 }));
     dispatch(fetchMaterialCategories());
   }, [dispatch, page, search, filterCategoryId, filterSupplierId, filterLowStock]);
 
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (editMaterial) {
+      setNewName(editMaterial.name);
+      setNewUnit(editMaterial.unit);
+      setNewCost(String(editMaterial.unitCost));
+      setNewSku(editMaterial.sku ?? "");
+      setNewCategoryId((editMaterial as any).categoryRef?.id ?? "");
+      setNewSupplierId(editMaterial.supplierId ?? "");
+      setNewReorderAt(editMaterial.reorderAt ? String(editMaterial.reorderAt) : "");
+      setNewDescription((editMaterial as any).description ?? "");
+      setNewStock(String(editMaterial.currentStock));
+      setEditReason("");
+    }
+  }, [editMaterial]);
+
+  function openEditMaterial(m: Material) {
+    setEditMaterial(m);
+    setShowAdd(true);
+  }
+
+  function closeAddEditDialog() {
+    setShowAdd(false);
+    setEditMaterial(null);
+    setNewName(""); setNewUnit(""); setNewCost(""); setNewSku("");
+    setNewCategoryId(""); setNewSupplierId(""); setNewReorderAt("");
+    setNewDescription(""); setNewStock("0"); setEditReason("");
+  }
+
   async function handleAddMaterial() {
     setCreatingMaterial(true);
     try {
-      await dispatch(
-        createMaterial({
-          name: newName,
-          unit: newUnit,
-          unitCost: parseFloat(newCost),
-          sku: newSku || undefined,
-          categoryId: newCategoryId || undefined,
-          supplierId: newSupplierId || undefined,
-          reorderAt: newReorderAt ? parseFloat(newReorderAt) : undefined,
-          description: newDescription.trim() || undefined,
-          stockOnHand: newStock ? parseFloat(newStock) : undefined,
-        }),
-      ).unwrap();
+      await dispatch(createMaterial({
+        name: newName, unit: newUnit, unitCost: parseFloat(newCost),
+        sku: newSku || undefined, categoryId: newCategoryId || undefined,
+        supplierId: newSupplierId || undefined,
+        reorderAt: newReorderAt ? parseFloat(newReorderAt) : undefined,
+        description: newDescription.trim() || undefined,
+        stockOnHand: newStock ? parseFloat(newStock) : undefined,
+      })).unwrap();
       toast.success(`${newName} added to catalog`);
-      setShowAdd(false);
-      setNewName("");
-      setNewUnit("");
-      setNewCost("");
-      setNewSku("");
-      setNewCategoryId("");
-      setNewSupplierId("");
-      setNewReorderAt("");
-      setNewDescription("");
-      setNewStock("0");
+      closeAddEditDialog();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add material");
     } finally {
@@ -118,22 +356,134 @@ export default function MaterialsPage() {
     }
   }
 
-  const selectedCategoryName =
-    categories.find((c) => c.id === newCategoryId)?.name ?? null;
-  const selectedSupplierName =
-    suppliers.find((s) => s.id === newSupplierId)?.name ?? null;
-  const selectedFilterCategoryName =
-    categories.find((c) => c.id === filterCategoryId)?.name ?? null;
-  const selectedFilterSupplierName =
-    suppliers.find((s) => s.id === filterSupplierId)?.name ?? null;
-  const selectedViewMaterial = items.find((m) => m.id === viewMaterialId) ?? null;
-  const activeFilterCount = (filterCategoryId ? 1 : 0) + (filterSupplierId ? 1 : 0) + (filterLowStock ? 1 : 0);
-
-  function handleLogUsage() {
-    dispatch(logMaterialUsage({ projectId: logProjectId, materialId: logMaterialId, quantity: parseFloat(logQty), unitCost: parseFloat(logCost), notes: logNotes || undefined }));
-    setShowLog(false);
-    setLogProjectId(""); setLogMaterialId(""); setLogQty(""); setLogCost(""); setLogNotes("");
+  async function handleUpdateMaterial() {
+    if (!editMaterial) return;
+    setCreatingMaterial(true);
+    try {
+      await dispatch(updateMaterial({
+        id: editMaterial.id,
+        data: {
+          name: newName, unit: newUnit, unitCost: parseFloat(newCost),
+          sku: newSku || undefined, categoryId: newCategoryId || undefined,
+          supplierId: newSupplierId || undefined,
+          reorderAt: newReorderAt ? parseFloat(newReorderAt) : undefined,
+          description: newDescription.trim() || undefined,
+          stockOnHand: newStock ? parseFloat(newStock) : undefined,
+          reason: editReason.trim() || undefined,
+        },
+      })).unwrap();
+      toast.success(`${newName} updated`);
+      closeAddEditDialog();
+      dispatch(fetchLowStock());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update material");
+    } finally {
+      setCreatingMaterial(false);
+    }
   }
+
+  async function handleDeleteMaterial(m: Material) {
+    try {
+      await dispatch(deleteMaterial(m.id)).unwrap();
+      toast.success(`${m.name} deleted`);
+      setMaterialToDelete(null);
+      if (viewMaterialId === m.id) setViewMaterialId(null);
+      dispatch(fetchLowStock());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete material");
+    }
+  }
+
+  async function handleCreateCategory() {
+    if (!newCatName.trim() || !newCatCode.trim()) return;
+    setCreatingCat(true);
+    try {
+      await dispatch(createMaterialCategory({
+        name: newCatName.trim(),
+        code: newCatCode.trim().toUpperCase(),
+      })).unwrap();
+      toast.success(`Category "${newCatName}" created`);
+      setNewCatName("");
+      setNewCatCode("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create category");
+    } finally {
+      setCreatingCat(false);
+    }
+  }
+
+  async function handleLogUsage() {
+    const valid = logLines.filter((l) => l.materialId && Number(l.qty) > 0);
+    if (!logProjectId) { toast.error("Select a project"); return; }
+    if (valid.length === 0) { toast.error("Add at least one line item"); return; }
+    setSavingLog(true);
+    try {
+      await Promise.all(
+        valid.map((l) =>
+          dispatch(logMaterialUsage({
+            projectId: logProjectId,
+            materialId: l.materialId,
+            quantity: Number(l.qty),
+            unitCost: Number(l.unitCost) || 0,
+            notes: l.notes.trim() || undefined,
+            usedAt: logDate,
+          })).unwrap(),
+        ),
+      );
+      toast.success(`${valid.length} usage log${valid.length > 1 ? "s" : ""} recorded`);
+      setShowLog(false);
+      setLogProjectId(""); setLogDate(new Date().toISOString().split("T")[0]);
+      setLogLines([emptyLogLine()]);
+      dispatch(fetchMaterials({ page, limit: 20 }));
+      dispatch(fetchLowStock());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to log usage");
+    } finally {
+      setSavingLog(false);
+    }
+  }
+
+  function updateLogLine(i: number, patch: Partial<LogLine>) {
+    setLogLines((cur) => cur.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  }
+
+  // ─── Derived option lists ─────────────────────────────────────────────────────
+  const supplierOptions = useMemo(
+    () => suppliers.map((s) => ({ value: s.id, label: s.name, sublabel: s.email || undefined })),
+    [suppliers],
+  );
+  const projectOptions = useMemo(
+    () => projects.map((p) => ({ value: p.id, label: p.name })),
+    [projects],
+  );
+  const categoryOptions = useMemo(
+    () => categories.map((c) => ({ value: c.id, label: c.name, sublabel: c.code })),
+    [categories],
+  );
+  const materialOptions = useMemo(
+    () => items.map((m) => ({
+      value: m.id, label: m.name,
+      sublabel: `${m.unit} · Stock: ${m.currentStock ?? 0}`,
+    })),
+    [items],
+  );
+  const approvedPrOptions = useMemo(
+    () => prs.filter((p) => p.status === "APPROVED").map((p) => ({
+      value: p.id, label: p.prNumber,
+      sublabel: p.project?.name,
+    })),
+    [prs],
+  );
+  const activePOOptions = useMemo(
+    () => pos.filter((p) => p.status === "SENT" || p.status === "PARTIAL").map((p) => ({
+      value: p.id, label: p.poNumber,
+      sublabel: p.supplier?.name,
+    })),
+    [pos],
+  );
+
+  const activeFilterCount = (filterCategoryId ? 1 : 0) + (filterSupplierId ? 1 : 0) + (filterLowStock ? 1 : 0);
+  const selectedViewMaterial = items.find((m) => m.id === viewMaterialId) ?? null;
 
   const columns: Column<Material>[] = [
     {
@@ -175,7 +525,29 @@ export default function MaterialsPage() {
       key: "category",
       header: "Category",
       cell: (m) => (
-        <span className="text-sm text-muted-foreground">{(m as any).categoryRef?.name || (m as any).category || "—"}</span>
+        <span className="text-sm text-muted-foreground">
+          {(m as any).categoryRef?.name || (m as any).category || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      cell: (m) => (
+        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button
+            variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+            onClick={() => openEditMaterial(m)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+            onClick={() => setMaterialToDelete(m)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -189,12 +561,14 @@ export default function MaterialsPage() {
         <Button variant="outline" onClick={() => setShowBulkPurchase(true)}>
           <ShoppingCart className="mr-2 h-4 w-4" /> Record Purchase
         </Button>
+        <Button variant="outline" onClick={() => setShowCategoryManager(true)}>
+          <Tag className="mr-2 h-4 w-4" /> Categories
+        </Button>
         <Button onClick={() => setShowAdd(true)}>
           <Plus className="mr-2 h-4 w-4" /> Add Material
         </Button>
       </PageHeader>
 
-      {/* Low stock alert */}
       {lowStock.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/30">
           <CardContent className="py-3">
@@ -215,100 +589,61 @@ export default function MaterialsPage() {
         </Card>
       )}
 
-      <Tabs defaultValue="inventory">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
           <TabsTrigger value="suppliers">Suppliers ({suppliers.length})</TabsTrigger>
+          <TabsTrigger value="procurement">Procurement</TabsTrigger>
         </TabsList>
 
+        {/* ── Inventory Tab ──────────────────────────────────────────────────── */}
         <TabsContent value="inventory" className="mt-4 space-y-4">
           <div className="rounded-lg border p-3">
             <div className="mb-2 flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
               <p className="text-sm font-medium">Filters</p>
-              {activeFilterCount > 0 ? <Badge variant="secondary">{activeFilterCount} active</Badge> : null}
+              {activeFilterCount > 0 && <Badge variant="secondary">{activeFilterCount} active</Badge>}
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Input
                 placeholder="Search materials..."
                 value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               />
-              <Select
-                value={filterCategoryId || "ALL"}
-                onValueChange={(v: string | null) => {
-                  const value = v === "ALL" || !v ? "" : v;
-                  setFilterCategoryId(value);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All categories">
-                    {selectedFilterCategoryName || "All categories"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All categories</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={filterSupplierId || "ALL"}
-                onValueChange={(v: string | null) => {
-                  const value = v === "ALL" || !v ? "" : v;
-                  setFilterSupplierId(value);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All suppliers">
-                    {selectedFilterSupplierName || "All suppliers"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All suppliers</SelectItem>
-                  {suppliers.map((supplier) => (
-                    <SelectItem key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={filterCategoryId}
+                onChange={(v) => { setFilterCategoryId(v); setPage(1); }}
+                options={[{ value: "", label: "All categories" }, ...categoryOptions]}
+                placeholder="All categories"
+              />
+              <SearchableSelect
+                value={filterSupplierId}
+                onChange={(v) => { setFilterSupplierId(v); setPage(1); }}
+                options={[{ value: "", label: "All suppliers" }, ...supplierOptions]}
+                placeholder="All suppliers"
+              />
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
                   variant={filterLowStock ? "default" : "outline"}
                   className="w-full"
-                  onClick={() => {
-                    setFilterLowStock((current) => !current);
-                    setPage(1);
-                  }}
+                  onClick={() => { setFilterLowStock((c) => !c); setPage(1); }}
                 >
                   Low stock only
                 </Button>
-                {activeFilterCount > 0 ? (
+                {activeFilterCount > 0 && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-sm"
                     onClick={() => {
-                      setSearch("");
-                      setFilterCategoryId("");
-                      setFilterSupplierId("");
-                      setFilterLowStock(false);
-                      setPage(1);
+                      setSearch(""); setFilterCategoryId(""); setFilterSupplierId("");
+                      setFilterLowStock(false); setPage(1);
                     }}
                   >
                     <X className="h-4 w-4" />
                   </Button>
-                ) : null}
+                )}
               </div>
             </div>
           </div>
@@ -316,17 +651,14 @@ export default function MaterialsPage() {
             <EmptyState icon={Package} title="No materials" description="Add your first material to start tracking inventory." actionLabel="Add Material" onAction={() => setShowAdd(true)} />
           ) : (
             <DataTable
-              columns={columns}
-              data={items}
-              isLoading={isLoading}
-              page={page}
-              totalPages={Math.ceil(total / 20)}
-              onPageChange={setPage}
+              columns={columns} data={items} isLoading={isLoading}
+              page={page} totalPages={Math.ceil(total / 20)} onPageChange={setPage}
               onRowClick={(material) => setViewMaterialId(material.id)}
             />
           )}
         </TabsContent>
 
+        {/* ── Suppliers Tab ──────────────────────────────────────────────────── */}
         <TabsContent value="suppliers" className="mt-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
@@ -339,8 +671,7 @@ export default function MaterialsPage() {
           <div className="space-y-2">
             {suppliers.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                No suppliers yet &mdash; Electrosales, Halsteds and Bhola will be
-                seeded the next time this page loads.
+                No suppliers yet.
               </p>
             ) : (
               suppliers.map((s) => (
@@ -352,21 +683,16 @@ export default function MaterialsPage() {
                         {s.email}{s.phone ? ` / ${s.phone}` : ""}
                       </p>
                       {s.address && <p className="text-xs text-muted-foreground">{s.address}</p>}
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                       {(s as any).categories && (
                         <div className="flex flex-wrap gap-1 pt-1">
-                          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                          {String((s as any).categories)
-                            .split(",")
-                            .filter(Boolean)
-                            .map((code) => {
-                              const cat = categories.find((c) => c.code === code.trim());
-                              return (
-                                <Badge key={code} variant="secondary" className="text-[10px]">
-                                  {cat?.name ?? code}
-                                </Badge>
-                              );
-                            })}
+                          {String((s as any).categories).split(",").filter(Boolean).map((code) => {
+                            const cat = categories.find((c) => c.code === code.trim());
+                            return (
+                              <Badge key={code} variant="secondary" className="text-[10px]">
+                                {cat?.name ?? code}
+                              </Badge>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -376,16 +702,368 @@ export default function MaterialsPage() {
             )}
           </div>
         </TabsContent>
+
+        {/* ── Procurement Tab ────────────────────────────────────────────────── */}
+        <TabsContent value="procurement" className="mt-4 space-y-4">
+          <Tabs value={procSubTab} onValueChange={setProcSubTab}>
+            <div className="flex items-center justify-between">
+              <TabsList>
+                <TabsTrigger value="prs"><ClipboardList className="mr-1.5 h-3.5 w-3.5" />Purchase Requests ({prs.length})</TabsTrigger>
+                <TabsTrigger value="pos"><FileText className="mr-1.5 h-3.5 w-3.5" />Purchase Orders ({pos.length})</TabsTrigger>
+                <TabsTrigger value="deliveries"><Truck className="mr-1.5 h-3.5 w-3.5" />Deliveries ({deliveries.length})</TabsTrigger>
+              </TabsList>
+              <div className="flex gap-2">
+                {procSubTab === "prs" && (
+                  <Button size="sm" onClick={() => setShowPrForm(true)}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" /> New PR
+                  </Button>
+                )}
+                {procSubTab === "pos" && (
+                  <Button size="sm" onClick={() => setShowPoForm(true)}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" /> New PO
+                  </Button>
+                )}
+                {procSubTab === "deliveries" && (
+                  <Button size="sm" onClick={() => setShowDeliveryForm(true)}>
+                    <Truck className="mr-1.5 h-3.5 w-3.5" /> Record Delivery
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <TabsContent value="prs" className="mt-3">
+              {procurementLoading ? (
+                <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : prs.length === 0 ? (
+                <EmptyState icon={ClipboardList} title="No purchase requests" description="Create a purchase request to start the procurement workflow." actionLabel="New PR" onAction={() => setShowPrForm(true)} />
+              ) : (
+                <div className="space-y-2">
+                  {prs.map((pr) => (
+                    <Card key={pr.id}>
+                      <CardContent className="py-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-semibold">{pr.prNumber}</p>
+                              <Badge variant={PR_STATUS_COLORS[pr.status] as any} className="text-[10px]">{pr.status}</Badge>
+                              {pr.project && <Badge variant="outline" className="text-[10px]">{pr.project.name}</Badge>}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {pr._count?.items ?? pr.items?.length ?? 0} item(s) &nbsp;·&nbsp;
+                              Requested by {pr.requestedBy?.firstName} {pr.requestedBy?.lastName} &nbsp;·&nbsp;
+                              {new Date(pr.createdAt).toLocaleDateString()}
+                            </p>
+                            {pr.notes && <p className="text-xs text-muted-foreground italic">{pr.notes}</p>}
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            {pr.status === "DRAFT" && (
+                              <Button size="sm" variant="outline" onClick={() => handlePrAction(pr.id, "submit")}>Submit</Button>
+                            )}
+                            {pr.status === "SUBMITTED" && (
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => handlePrAction(pr.id, "approve")}>Approve</Button>
+                                <Button size="sm" variant="ghost" onClick={() => handlePrAction(pr.id, "reject")}>Reject</Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="pos" className="mt-3">
+              {procurementLoading ? (
+                <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : pos.length === 0 ? (
+                <EmptyState icon={FileText} title="No purchase orders" description="Create a purchase order to order from a supplier." actionLabel="New PO" onAction={() => setShowPoForm(true)} />
+              ) : (
+                <div className="space-y-2">
+                  {pos.map((po) => (
+                    <Card key={po.id}>
+                      <CardContent className="py-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-semibold">{po.poNumber}</p>
+                              <Badge variant={PO_STATUS_COLORS[po.status] as any} className="text-[10px]">{po.status}</Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {po.supplier?.name} &nbsp;·&nbsp;
+                              {formatCurrency(Number(po.totalAmount))} &nbsp;·&nbsp;
+                              {new Date(po.createdAt).toLocaleDateString()}
+                            </p>
+                            {po.purchaseRequest && (
+                              <p className="text-xs text-muted-foreground">Linked PR: {po.purchaseRequest.prNumber}</p>
+                            )}
+                            {po.expectedDelivery && (
+                              <p className="text-xs text-muted-foreground">Expected: {new Date(po.expectedDelivery).toLocaleDateString()}</p>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            {po.status === "DRAFT" && (
+                              <Button size="sm" variant="outline" onClick={() => handleSendPO(po.id)}>Send to Supplier</Button>
+                            )}
+                            {(po.status === "SENT" || po.status === "PARTIAL") && (
+                              <Button size="sm" variant="outline" onClick={() => { setDeliveryPoId(po.id); setShowDeliveryForm(true); }}>
+                                <Truck className="mr-1.5 h-3.5 w-3.5" /> Record Delivery
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="deliveries" className="mt-3">
+              {procurementLoading ? (
+                <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : deliveries.length === 0 ? (
+                <EmptyState icon={Truck} title="No deliveries yet" description="Record a delivery against a sent purchase order." actionLabel="Record Delivery" onAction={() => setShowDeliveryForm(true)} />
+              ) : (
+                <div className="space-y-2">
+                  {deliveries.map((dn) => (
+                    <Card key={dn.id}>
+                      <CardContent className="py-3">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold">
+                            {dn.purchaseOrder?.poNumber} — {dn.purchaseOrder?.supplier?.name ?? ""}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {dn._count?.items ?? 0} item(s) &nbsp;·&nbsp;
+                            Received by {dn.receivedBy?.firstName} {dn.receivedBy?.lastName} &nbsp;·&nbsp;
+                            {new Date(dn.deliveryDate).toLocaleDateString()}
+                          </p>
+                          {dn.notes && <p className="text-xs text-muted-foreground italic">{dn.notes}</p>}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </TabsContent>
       </Tabs>
 
-      {/* Add Material Dialog */}
-      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+      {/* ── PR Form Dialog ──────────────────────────────────────────────────────── */}
+      <Dialog open={showPrForm} onOpenChange={setShowPrForm}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add Material</DialogTitle>
+            <DialogTitle>New Purchase Request</DialogTitle>
+            <DialogDescription>Request materials for procurement approval.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Project (optional)</Label>
+                <SearchableSelect
+                  value={prProjectId}
+                  onChange={setPrProjectId}
+                  options={[{ value: "", label: "No project" }, ...projectOptions]}
+                  placeholder="No project"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Notes</Label>
+                <Input value={prNotes} onChange={(e) => setPrNotes(e.target.value)} placeholder="Reason or context" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Items *</Label>
+              {prItems.map((item, idx) => (
+                <div key={idx} className="grid gap-2 rounded-md border p-3 sm:grid-cols-5">
+                  <Input className="sm:col-span-2" placeholder="Description *" value={item.description} onChange={(e) => { const n = [...prItems]; n[idx].description = e.target.value; setPrItems(n); }} />
+                  <Input type="number" step="0.001" min={0} placeholder="Qty *" value={item.quantity} onChange={(e) => { const n = [...prItems]; n[idx].quantity = e.target.value; setPrItems(n); }} />
+                  <Input placeholder="Unit *" value={item.unit} onChange={(e) => { const n = [...prItems]; n[idx].unit = e.target.value; setPrItems(n); }} />
+                  <Input type="number" step="0.01" min={0} placeholder="Est. cost" value={item.estimatedUnitCost} onChange={(e) => { const n = [...prItems]; n[idx].estimatedUnitCost = e.target.value; setPrItems(n); }} />
+                  <div className="sm:col-span-4">
+                    <SearchableSelect
+                      value={item.materialId}
+                      onChange={(v) => {
+                        const n = [...prItems]; n[idx].materialId = v;
+                        const m = items.find((i) => i.id === v);
+                        if (m) n[idx].unit = n[idx].unit || m.unit;
+                        setPrItems(n);
+                      }}
+                      options={[{ value: "", label: "No material (custom item)" }, ...materialOptions]}
+                      placeholder="Link material (optional)"
+                    />
+                  </div>
+                  {prItems.length > 1 && (
+                    <Button type="button" size="icon-sm" variant="ghost" onClick={() => setPrItems((prev) => prev.filter((_, i) => i !== idx))}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" onClick={() => setPrItems((prev) => [...prev, { description: "", quantity: "", unit: "", estimatedUnitCost: "", materialId: "" }])}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Item
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPrForm(false)} disabled={savingPr}>Cancel</Button>
+            <Button onClick={handleCreatePR} disabled={savingPr || !prItems[0]?.description}>
+              {savingPr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {savingPr ? "Saving..." : "Create PR"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── PO Form Dialog ──────────────────────────────────────────────────────── */}
+      <Dialog open={showPoForm} onOpenChange={setShowPoForm}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>New Purchase Order</DialogTitle>
+            <DialogDescription>Issue a purchase order to a supplier.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Supplier *</Label>
+                <SearchableSelect
+                  value={poSupplierId}
+                  onChange={setPoSupplierId}
+                  options={supplierOptions}
+                  placeholder="Search supplier..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Linked PR (optional)</Label>
+                <SearchableSelect
+                  value={poPrId}
+                  onChange={setPoPrId}
+                  options={[{ value: "", label: "No linked PR" }, ...approvedPrOptions]}
+                  placeholder="No PR"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Expected Delivery</Label>
+                <Input type="date" value={poExpected} onChange={(e) => setPoExpected(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Notes</Label>
+                <Input value={poNotes} onChange={(e) => setPoNotes(e.target.value)} placeholder="Optional" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Items *</Label>
+              {poItems.map((item, idx) => (
+                <div key={idx} className="grid gap-2 rounded-md border p-3 sm:grid-cols-4">
+                  <Input className="sm:col-span-2" placeholder="Description *" value={item.description} onChange={(e) => { const n = [...poItems]; n[idx].description = e.target.value; setPoItems(n); }} />
+                  <Input type="number" step="0.001" min={0} placeholder="Qty *" value={item.quantity} onChange={(e) => { const n = [...poItems]; n[idx].quantity = e.target.value; setPoItems(n); }} />
+                  <Input type="number" step="0.01" min={0} placeholder="Unit cost *" value={item.unitCost} onChange={(e) => { const n = [...poItems]; n[idx].unitCost = e.target.value; setPoItems(n); }} />
+                  <div className="sm:col-span-3">
+                    <SearchableSelect
+                      value={item.materialId}
+                      onChange={(v) => { const n = [...poItems]; n[idx].materialId = v; setPoItems(n); }}
+                      options={[{ value: "", label: "No material (custom item)" }, ...materialOptions]}
+                      placeholder="Link material (optional)"
+                    />
+                  </div>
+                  {poItems.length > 1 && (
+                    <Button type="button" size="icon-sm" variant="ghost" onClick={() => setPoItems((prev) => prev.filter((_, i) => i !== idx))}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" onClick={() => setPoItems((prev) => [...prev, { description: "", quantity: "", unitCost: "", materialId: "" }])}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Item
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPoForm(false)} disabled={savingPo}>Cancel</Button>
+            <Button onClick={handleCreatePO} disabled={savingPo || !poSupplierId || !poItems[0]?.description}>
+              {savingPo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {savingPo ? "Saving..." : "Create PO"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delivery Form Dialog ────────────────────────────────────────────────── */}
+      <Dialog open={showDeliveryForm} onOpenChange={setShowDeliveryForm}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Record Delivery</DialogTitle>
+            <DialogDescription>Record items received against a purchase order. Stock will be updated automatically.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Purchase Order *</Label>
+                <SearchableSelect
+                  value={deliveryPoId}
+                  onChange={setDeliveryPoId}
+                  options={activePOOptions}
+                  placeholder="Select PO..."
+                  emptyText="No sent/partial POs found"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Delivery Date *</Label>
+                <Input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Notes</Label>
+                <Input value={deliveryNotes} onChange={(e) => setDeliveryNotes(e.target.value)} placeholder="e.g. partial delivery, condition notes" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Items Received *</Label>
+              {deliveryItems.map((item, idx) => (
+                <div key={idx} className="grid gap-2 rounded-md border p-3 sm:grid-cols-4">
+                  <Input className="sm:col-span-2" placeholder="Description *" value={item.description} onChange={(e) => { const n = [...deliveryItems]; n[idx].description = e.target.value; setDeliveryItems(n); }} />
+                  <Input type="number" step="0.001" min={0} placeholder="Qty ordered *" value={item.quantityOrdered} onChange={(e) => { const n = [...deliveryItems]; n[idx].quantityOrdered = e.target.value; setDeliveryItems(n); }} />
+                  <Input type="number" step="0.001" min={0} placeholder="Qty received *" value={item.quantityReceived} onChange={(e) => { const n = [...deliveryItems]; n[idx].quantityReceived = e.target.value; setDeliveryItems(n); }} />
+                  <div className="sm:col-span-3">
+                    <SearchableSelect
+                      value={item.materialId}
+                      onChange={(v) => { const n = [...deliveryItems]; n[idx].materialId = v; setDeliveryItems(n); }}
+                      options={[{ value: "", label: "No material (don't update stock)" }, ...materialOptions]}
+                      placeholder="Link material (stock update)"
+                    />
+                  </div>
+                  {deliveryItems.length > 1 && (
+                    <Button type="button" size="icon-sm" variant="ghost" onClick={() => setDeliveryItems((prev) => prev.filter((_, i) => i !== idx))}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" onClick={() => setDeliveryItems((prev) => [...prev, { description: "", quantityOrdered: "", quantityReceived: "", materialId: "" }])}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Item
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeliveryForm(false)} disabled={savingDelivery}>Cancel</Button>
+            <Button onClick={handleRecordDelivery} disabled={savingDelivery || !deliveryPoId || !deliveryItems[0]?.description}>
+              {savingDelivery ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {savingDelivery ? "Saving..." : "Record Delivery"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Add / Edit Material Dialog ──────────────────────────────────────────── */}
+      <Dialog open={showAdd} onOpenChange={(open) => { if (!open) closeAddEditDialog(); }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editMaterial ? "Edit Material" : "Add Material"}</DialogTitle>
             <DialogDescription>
-              Register a new material in your catalog. Category + supplier make
-              reporting and bulk purchases much easier down the line.
+              {editMaterial
+                ? "Update material details. Changing price or stock requires a reason."
+                : "Register a new material in your catalog."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -395,35 +1073,22 @@ export default function MaterialsPage() {
             </div>
             <div className="space-y-2">
               <Label>Category</Label>
-              <Select value={newCategoryId || "NONE"} onValueChange={(v: string | null) => setNewCategoryId(v === "NONE" || !v ? "" : v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select category">
-                    {selectedCategoryName || "No category"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="NONE">No category</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={newCategoryId}
+                onChange={setNewCategoryId}
+                options={[{ value: "", label: "No category" }, ...categoryOptions]}
+                placeholder="Select category"
+                emptyText="No categories — create one via Categories button"
+              />
             </div>
             <div className="space-y-2">
               <Label>Supplier</Label>
-              <Select value={newSupplierId || "NONE"} onValueChange={(v: string | null) => setNewSupplierId(v === "NONE" || !v ? "" : v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select supplier">
-                    {selectedSupplierName || "No supplier"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="NONE">No supplier</SelectItem>
-                  {suppliers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={newSupplierId}
+                onChange={setNewSupplierId}
+                options={[{ value: "", label: "No supplier" }, ...supplierOptions]}
+                placeholder="Select supplier"
+              />
             </div>
             <div className="space-y-2">
               <Label>Unit of Measure *</Label>
@@ -439,41 +1104,233 @@ export default function MaterialsPage() {
             </div>
             <div className="space-y-2">
               <Label>Reorder Level</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min={0}
-                value={newReorderAt}
-                onChange={(e) => setNewReorderAt(e.target.value)}
-                placeholder="e.g. 10"
-              />
+              <Input type="number" step="0.01" min={0} value={newReorderAt} onChange={(e) => setNewReorderAt(e.target.value)} placeholder="e.g. 10" />
             </div>
             <div className="space-y-2">
-              <Label>Opening Stock</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min={0}
-                value={newStock}
-                onChange={(e) => setNewStock(e.target.value)}
-              />
+              <Label>{editMaterial ? "Stock on Hand" : "Opening Stock"}</Label>
+              <Input type="number" step="0.01" min={0} value={newStock} onChange={(e) => setNewStock(e.target.value)} />
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Description</Label>
-              <Textarea
-                rows={2}
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                placeholder="Spec notes, brand, grade, etc."
-              />
+              <Textarea rows={2} value={newDescription} onChange={(e) => setNewDescription(e.target.value)} placeholder="Spec notes, brand, grade, etc." />
+            </div>
+            {editMaterial && (() => {
+              const costChanged = parseFloat(newCost) !== editMaterial.unitCost;
+              const stockChanged = parseFloat(newStock) !== editMaterial.currentStock;
+              return (costChanged || stockChanged) ? (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>
+                    Reason for change *
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                      (required — this will be logged as an immutable audit record)
+                    </span>
+                  </Label>
+                  <Textarea
+                    rows={2}
+                    value={editReason}
+                    onChange={(e) => setEditReason(e.target.value)}
+                    placeholder="e.g. Price correction from supplier invoice #1234, stock count after physical audit…"
+                  />
+                </div>
+              ) : null;
+            })()}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeAddEditDialog} disabled={creatingMaterial}>Cancel</Button>
+            <Button
+              onClick={editMaterial ? handleUpdateMaterial : handleAddMaterial}
+              disabled={!newName || !newUnit || !newCost || creatingMaterial || (
+                editMaterial
+                  ? ((parseFloat(newCost) !== editMaterial.unitCost || parseFloat(newStock) !== editMaterial.currentStock) && !editReason.trim())
+                  : false
+              )}
+            >
+              {creatingMaterial ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {creatingMaterial
+                ? (editMaterial ? "Saving..." : "Adding...")
+                : (editMaterial ? "Save Changes" : "Add Material")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Confirmation ─────────────────────────────────────────────────── */}
+      <AlertDialog open={!!materialToDelete} onOpenChange={(open) => { if (!open) setMaterialToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {materialToDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the material from your catalog. Existing usage logs and purchases are preserved. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => materialToDelete && handleDeleteMaterial(materialToDelete)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Log Usage Dialog (bulk) ─────────────────────────────────────────────── */}
+      <Dialog open={showLog} onOpenChange={(open) => {
+        setShowLog(open);
+        if (!open) { setLogProjectId(""); setLogDate(new Date().toISOString().split("T")[0]); setLogLines([emptyLogLine()]); }
+      }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Log Material Usage</DialogTitle>
+            <DialogDescription>Record materials consumed on a project. Stock levels are reduced automatically.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Project *</Label>
+                <SearchableSelect
+                  value={logProjectId}
+                  onChange={setLogProjectId}
+                  options={projectOptions}
+                  placeholder="Select project..."
+                  emptyText="No projects found"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <Input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Materials used *</Label>
+                <Button type="button" variant="outline" size="sm" onClick={() => setLogLines((l) => [...l, emptyLogLine()])}>
+                  <Plus className="mr-1 h-3.5 w-3.5" /> Add line
+                </Button>
+              </div>
+              {logLines.map((line, i) => (
+                <div key={i} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-12 sm:items-end">
+                  <div className="space-y-1 sm:col-span-5">
+                    {i === 0 && <Label className="text-xs">Material *</Label>}
+                    <SearchableSelect
+                      value={line.materialId}
+                      onChange={(v) => {
+                        const mat = items.find((m) => m.id === v);
+                        updateLogLine(i, { materialId: v, unitCost: mat ? String(mat.unitCost) : line.unitCost });
+                      }}
+                      options={materialOptions}
+                      placeholder="Pick material"
+                      width="w-80"
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    {i === 0 && <Label className="text-xs">Qty *</Label>}
+                    <Input
+                      type="number" step="0.01" min={0} className="h-9"
+                      value={line.qty}
+                      onChange={(e) => updateLogLine(i, { qty: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    {i === 0 && <Label className="text-xs">Unit Cost</Label>}
+                    <Input
+                      type="number" step="0.01" min={0} className="h-9"
+                      value={line.unitCost}
+                      onChange={(e) => updateLogLine(i, { unitCost: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    {i === 0 && <Label className="text-xs">Notes</Label>}
+                    <Input
+                      className="h-9" placeholder="Optional"
+                      value={line.notes}
+                      onChange={(e) => updateLogLine(i, { notes: e.target.value })}
+                    />
+                  </div>
+                  <div className="sm:col-span-1 flex items-end justify-end">
+                    <Button
+                      type="button" variant="ghost" size="sm" className="h-9 w-9 p-0"
+                      onClick={() => setLogLines((c) => c.length <= 1 ? c : c.filter((_, idx) => idx !== i))}
+                      disabled={logLines.length <= 1}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAdd(false)} disabled={creatingMaterial}>Cancel</Button>
-            <Button onClick={handleAddMaterial} disabled={!newName || !newUnit || !newCost || creatingMaterial}>
-              {creatingMaterial ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {creatingMaterial ? "Adding..." : "Add Material"}
+            <Button variant="outline" onClick={() => setShowLog(false)} disabled={savingLog}>Cancel</Button>
+            <Button onClick={handleLogUsage} disabled={savingLog || !logProjectId || !logLines[0]?.materialId}>
+              {savingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {savingLog ? "Logging..." : "Log Usage"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Category Manager Dialog ─────────────────────────────────────────────── */}
+      <Dialog open={showCategoryManager} onOpenChange={setShowCategoryManager}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Material Categories</DialogTitle>
+            <DialogDescription>Manage categories for organising materials in your catalog.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="max-h-48 overflow-y-auto space-y-1.5">
+              {categories.length === 0 ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">No categories yet.</p>
+              ) : (
+                categories.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium">{c.name}</p>
+                      {c.description && <p className="text-xs text-muted-foreground">{c.description}</p>}
+                    </div>
+                    <Badge variant="secondary" className="text-[10px] font-mono">{c.code}</Badge>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="rounded-md border p-3 space-y-3">
+              <p className="text-sm font-medium">New Category</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Name *</Label>
+                  <Input
+                    placeholder="e.g. Electrical"
+                    value={newCatName}
+                    onChange={(e) => {
+                      setNewCatName(e.target.value);
+                      if (!newCatCode) {
+                        setNewCatCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8));
+                      }
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Code *</Label>
+                  <Input
+                    placeholder="e.g. ELEC"
+                    value={newCatCode}
+                    onChange={(e) => setNewCatCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8))}
+                  />
+                </div>
+              </div>
+              <Button
+                type="button" size="sm" className="w-full"
+                disabled={!newCatName.trim() || !newCatCode.trim() || creatingCat}
+                onClick={handleCreateCategory}
+              >
+                {creatingCat ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
+                {creatingCat ? "Creating..." : "Create Category"}
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCategoryManager(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -493,44 +1350,12 @@ export default function MaterialsPage() {
         }}
       />
 
-      {/* Log Usage Dialog */}
-      <Dialog open={showLog} onOpenChange={setShowLog}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Log Material Usage</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Project *</Label>
-              <Select value={logProjectId} onValueChange={(v: string | null) => setLogProjectId(v ?? "")}>
-                <SelectTrigger><SelectValue placeholder="Select project" /></SelectTrigger>
-                <SelectContent>{projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Material *</Label>
-              <Select value={logMaterialId} onValueChange={(v: string | null) => { setLogMaterialId(v ?? ""); const m = items.find((i) => i.id === v); if (m) setLogCost(String(m.unitCost)); }}>
-                <SelectTrigger><SelectValue placeholder="Select material" /></SelectTrigger>
-                <SelectContent>{items.map((m) => <SelectItem key={m.id} value={m.id}>{m.name} ({m.unit})</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Quantity *</Label><Input type="number" step="0.01" value={logQty} onChange={(e) => setLogQty(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Unit Cost</Label><Input type="number" step="0.01" value={logCost} onChange={(e) => setLogCost(e.target.value)} /></div>
-            </div>
-            <div className="space-y-2"><Label>Notes</Label><Input value={logNotes} onChange={(e) => setLogNotes(e.target.value)} /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLog(false)}>Cancel</Button>
-            <Button onClick={handleLogUsage} disabled={!logProjectId || !logMaterialId || !logQty}>Log Usage</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <MaterialViewDrawer
         open={Boolean(viewMaterialId)}
-        onOpenChange={(open) => {
-          if (!open) setViewMaterialId(null);
-        }}
+        onOpenChange={(open) => { if (!open) setViewMaterialId(null); }}
         material={selectedViewMaterial}
+        onEdit={(m) => { setViewMaterialId(null); openEditMaterial(m); }}
+        onDelete={(m) => handleDeleteMaterial(m)}
       />
     </div>
   );

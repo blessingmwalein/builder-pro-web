@@ -7,9 +7,11 @@ import {
   Smartphone,
   AlertCircle,
   CheckCircle2,
+  Tag,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
-import api from "@/lib/api";
+import api, { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/hooks";
 import type {
   BillingCycle,
@@ -17,6 +19,14 @@ import type {
   ActivateSubscriptionResponse,
   Plan,
 } from "@/types";
+
+type PromoValidation = {
+  valid: boolean;
+  discountType: "PERCENTAGE" | "FIXED";
+  discountValue: number;
+  description?: string | null;
+  message?: string;
+};
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,6 +69,9 @@ export function PaymentModal({ open, onOpenChange, plan, onSuccess }: PaymentMod
   const [paymentMethod, setPaymentMethod] = useState<SubscriptionPaymentMethod>("PAYNOW");
   const [payerEmail, setPayerEmail] = useState("");
   const [payerPhone, setPayerPhone] = useState("");
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<PromoValidation | null>(null);
+  const [isValidatingPromo, setIsValidatingPromo] = useState(false);
 
   // State
   const [isActivating, setIsActivating] = useState(false);
@@ -85,6 +98,8 @@ export function PaymentModal({ open, onOpenChange, plan, onSuccess }: PaymentMod
       setBillingCycle("MONTHLY");
       setPaymentMethod("PAYNOW");
       setPayerPhone("");
+      setPromoInput("");
+      setAppliedPromo(null);
     } else {
       pollingRef.current = false;
     }
@@ -133,6 +148,26 @@ export function PaymentModal({ open, onOpenChange, plan, onSuccess }: PaymentMod
     [onSuccess, onOpenChange]
   );
 
+  const applyPromo = useCallback(async () => {
+    const code = promoInput.trim().toUpperCase();
+    if (!code) return;
+    setIsValidatingPromo(true);
+    setAppliedPromo(null);
+    try {
+      const result = await api.get<PromoValidation>("/onboarding/validate-promo", { code });
+      setAppliedPromo(result);
+    } catch (err) {
+      setAppliedPromo({
+        valid: false,
+        discountType: "PERCENTAGE",
+        discountValue: 0,
+        message: err instanceof ApiError ? err.message : "Could not validate promo code.",
+      });
+    } finally {
+      setIsValidatingPromo(false);
+    }
+  }, [promoInput]);
+
   async function handlePay() {
     if (!plan) return;
 
@@ -154,6 +189,7 @@ export function PaymentModal({ open, onOpenChange, plan, onSuccess }: PaymentMod
         billingCycle,
         payerEmail,
         ...(paymentMethod === "ECOCASH" && payerPhone ? { payerPhone } : {}),
+        ...(appliedPromo?.valid && promoInput.trim() ? { promoCode: promoInput.trim().toUpperCase() } : {}),
       });
 
       setPendingPayment(result);
@@ -178,7 +214,13 @@ export function PaymentModal({ open, onOpenChange, plan, onSuccess }: PaymentMod
 
   if (!plan) return null;
 
-  const price = billingCycle === "ANNUAL" ? toMoney(plan.annualPrice) : toMoney(plan.monthlyPrice);
+  const basePrice = billingCycle === "ANNUAL" ? toMoney(plan.annualPrice) : toMoney(plan.monthlyPrice);
+  const discountedPrice = appliedPromo?.valid
+    ? appliedPromo.discountType === "PERCENTAGE"
+      ? Math.max(0, basePrice * (1 - appliedPromo.discountValue / 100))
+      : Math.max(0, basePrice - appliedPromo.discountValue)
+    : basePrice;
+  const price = discountedPrice;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!isPolling) onOpenChange(v); }}>
@@ -263,10 +305,29 @@ export function PaymentModal({ open, onOpenChange, plan, onSuccess }: PaymentMod
                 <span className="text-muted-foreground">Billing</span>
                 <span className="font-medium">{billingCycle === "ANNUAL" ? "Annual" : "Monthly"}</span>
               </div>
+              {appliedPromo?.valid && (
+                <div className="flex justify-between text-emerald-700">
+                  <span className="flex items-center gap-1">
+                    <Tag className="h-3 w-3" />
+                    {promoInput.trim().toUpperCase()}
+                    {appliedPromo.discountType === "PERCENTAGE"
+                      ? ` (${appliedPromo.discountValue}% off)`
+                      : ` ($${appliedPromo.discountValue} off)`}
+                  </span>
+                  <span>-${(basePrice - price).toFixed(2)}</span>
+                </div>
+              )}
               <Separator />
               <div className="flex justify-between font-semibold text-base">
                 <span>Total</span>
-                <span>${price.toFixed(2)}</span>
+                <span className="flex items-center gap-2">
+                  {appliedPromo?.valid && (
+                    <span className="line-through text-muted-foreground text-sm font-normal">
+                      ${basePrice.toFixed(2)}
+                    </span>
+                  )}
+                  ${price.toFixed(2)}
+                </span>
               </div>
             </div>
 
@@ -294,6 +355,63 @@ export function PaymentModal({ open, onOpenChange, plan, onSuccess }: PaymentMod
               >
                 Annual <span className="text-xs text-emerald-600 font-semibold">Save 20%</span>
               </button>
+            </div>
+
+            {/* Promo code */}
+            <div className="space-y-2">
+              <Label htmlFor="pm-promo">Promo / Voucher Code</Label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    id="pm-promo"
+                    value={promoInput}
+                    onChange={(e) => {
+                      setPromoInput(e.target.value.toUpperCase());
+                      setAppliedPromo(null);
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Enter") void applyPromo(); }}
+                    placeholder="Enter code (optional)"
+                    className="uppercase pr-7"
+                    disabled={isActivating}
+                  />
+                  {appliedPromo && (
+                    <button
+                      type="button"
+                      onClick={() => { setAppliedPromo(null); setPromoInput(""); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={applyPromo}
+                  disabled={!promoInput.trim() || isValidatingPromo || isActivating}
+                  className="shrink-0 rounded-md border border-border bg-muted px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+                >
+                  {isValidatingPromo ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+                </button>
+              </div>
+              {appliedPromo && (
+                <p className={`text-xs flex items-center gap-1 ${appliedPromo.valid ? "text-emerald-700" : "text-destructive"}`}>
+                  {appliedPromo.valid ? (
+                    <>
+                      <CheckCircle2 className="h-3 w-3" />
+                      {appliedPromo.description
+                        ? appliedPromo.description
+                        : appliedPromo.discountType === "PERCENTAGE"
+                          ? `${appliedPromo.discountValue}% discount applied!`
+                          : `$${appliedPromo.discountValue} discount applied!`}
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-3 w-3" />
+                      {appliedPromo.message}
+                    </>
+                  )}
+                </p>
+              )}
             </div>
 
             {/* Payment method */}

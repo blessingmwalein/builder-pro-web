@@ -77,6 +77,8 @@ export interface AuthState {
   refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  subscriptionExpired: boolean;
+  subscriptionErrorCode: string | null;
 }
 
 export interface LoginRequest {
@@ -93,13 +95,30 @@ export interface LoginResponse {
 
 export interface RegisterRequest {
   companyName: string;
-  industry: string;
+  industry?: string;
   firstName: string;
   lastName: string;
   email: string;
   password: string;
   phone?: string;
-  planCode: string;
+  planCode?: string;
+  accountType?: AccountType;
+  // Company profile
+  legalName?: string;
+  registrationNumber?: string;
+  taxNumber?: string;
+  website?: string;
+  companySize?: string;
+  yearsOperating?: number;
+  description?: string;
+  businessPhone?: string;
+  businessEmail?: string;
+  city?: string;
+  // Individual profile
+  businessName?: string;
+  primarySector?: string;
+  businessSize?: string;
+  serviceAreas?: string[];
 }
 
 export interface RegisterResponse {
@@ -330,6 +349,7 @@ export interface Task {
   estimatedHours: number | null;
   actualHours: number | null;
   parentTaskId: string | null;
+  stageId: string | null;
   assignees: User[];
   comments?: TaskComment[];
   checklists?: Checklist[];
@@ -367,6 +387,7 @@ export interface CreateTaskRequest {
   dueDate?: string;
   estimatedHours?: number;
   parentTaskId?: string;
+  stageId?: string | null;
   assigneeIds?: string[];
 }
 
@@ -461,6 +482,7 @@ export interface CreateMaterialUsageRequest {
   unitCost: number;
   supplierId?: string;
   notes?: string;
+  usedAt?: string;
 }
 
 // ---- Quotes ----
@@ -490,7 +512,7 @@ export interface Quote {
 
 export interface QuoteLineItem {
   id?: string;
-  category: LineItemCategory;
+  category: string;
   description: string;
   quantity: number;
   unitPrice: number;
@@ -779,4 +801,99 @@ export interface FinancialSummaryReport {
   profit: number;
   outstandingInvoices: number;
   marginPercent: number;
+}
+
+// ---- Onboarding ----
+
+export interface OnboardingSetupRequest {
+  selectedSectors: string[];
+  selectedProjectTypes: string[];
+  selectedStakeholders: string[];
+  selectedWorkflows: string[];
+}
+
+export interface OnboardingOptions {
+  sectors: { code: string; name: string }[];
+  projectTypes: { code: string; name: string }[];
+  stakeholders: { code: string; name: string; description: string }[];
+  workflows: { code: string; name: string; description: string }[];
+}
+
+// ---- Company Settings / Profile ----
+
+export interface CompanySettingsData {
+  currency: string;
+  taxRate: number;
+  taxName: string;
+  invoicePrefix: string;
+  invoiceNextNumber: number;
+  quotePrefix: string;
+  quoteNextNumber: number;
+  purchaseOrderPrefix: string;
+  purchaseOrderNext: number;
+  approvalRequired: boolean;
+  notificationsEnabled: boolean;
+}
+
+export interface IndividualProfileData {
+  businessName: string;
+  description?: string;
+  logoUrl?: string;
+  primarySector?: string;
+  businessSize?: string;
+  serviceAreas: string[];
+  phone?: string;
+  businessEmail?: string;
+  registrationNumber?: string;
+  taxNumber?: string;
+  country?: string;
+  city?: string;
+  yearsOperating?: number;
+}
+
+export interface TenantSector {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface TenantProjectType {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface TenantStakeholder {
+  id: string;
+  type: string;
+  name: string;
+  role?: { id: string; name: string } | null;
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  isEnabled: boolean;
+  stages: unknown[];
+}
+
+export interface CompanyDetails extends Tenant {
+  legalName?: string | null;
+  registrationNumber?: string | null;
+  taxNumber?: string | null;
+  website?: string | null;
+  companySize?: string | null;
+  yearsOperating?: number | null;
+  description?: string | null;
+  businessPhone?: string | null;
+  businessEmail?: string | null;
+  city?: string | null;
+  settings?: CompanySettingsData | null;
+  individualProfile?: IndividualProfileData | null;
+  sectors: TenantSector[];
+  projectTypes: TenantProjectType[];
+  stakeholders: TenantStakeholder[];
+  workflows: WorkflowTemplate[];
 }

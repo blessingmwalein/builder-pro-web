@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
 import { useAuth } from "@/lib/hooks";
 import Sidebar from "@/components/dashboard/sidebar";
 import Header from "@/components/dashboard/header";
@@ -11,15 +13,23 @@ import { Loader2 } from "lucide-react";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
+  const subscriptionExpired = useSelector((s: RootState) => s.auth.subscriptionExpired);
+  const subscriptionErrorCode = useSelector((s: RootState) => s.auth.subscriptionErrorCode);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const onboarding = useOnboardingGuide();
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (isLoading) return;
+    if (subscriptionExpired) {
+      const code = subscriptionErrorCode ?? '';
+      router.replace(`/subscription-expired?reason=${encodeURIComponent(code)}`);
+      return;
+    }
+    if (!isAuthenticated) {
       router.push("/login");
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, subscriptionExpired, subscriptionErrorCode, router]);
 
   if (isLoading) {
     return (

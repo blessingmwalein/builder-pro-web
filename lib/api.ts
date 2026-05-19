@@ -64,16 +64,22 @@ function getTenantSlug(): string | null {
 export function setTokens(access: string, refresh?: string) {
   localStorage.setItem("bp_access_token", access);
   if (refresh) localStorage.setItem("bp_refresh_token", refresh);
+  // Mirror in cookies so Next.js middleware can read them (localStorage is client-only)
+  document.cookie = `bp_access_token=${encodeURIComponent(access)}; path=/; SameSite=Strict; max-age=3600`;
 }
 
 export function setTenantSlug(slug: string) {
   localStorage.setItem("bp_tenant_slug", slug);
+  document.cookie = `bp_tenant_slug=${encodeURIComponent(slug)}; path=/; SameSite=Strict; max-age=86400`;
 }
 
 export function clearAuth() {
+  if (typeof window === "undefined") return;
   localStorage.removeItem("bp_access_token");
   localStorage.removeItem("bp_refresh_token");
   localStorage.removeItem("bp_tenant_slug");
+  document.cookie = "bp_access_token=; path=/; max-age=0; SameSite=Strict";
+  document.cookie = "bp_tenant_slug=; path=/; max-age=0; SameSite=Strict";
 }
 
 let isRefreshing = false;
@@ -167,6 +173,19 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (!res.ok) {
     const errData = await res.json().catch(() => null);
+
+    // Subscription gate — redirect to the expired page so users can upgrade.
+    if (res.status === 402 && typeof window !== 'undefined') {
+      // Only exempt pages that would loop (the destination itself and activation flows).
+      const exemptPaths = ['/subscription', '/accept-invite'];
+      const isExempt = exemptPaths.some((p) => window.location.pathname.startsWith(p));
+      if (!isExempt) {
+        const code = (errData as { code?: string } | null)?.code ?? '';
+        window.location.href = `/subscription-expired?reason=${encodeURIComponent(code)}`;
+      }
+      throw new ApiError(402, 'Subscription required', errData);
+    }
+
     throw new ApiError(res.status, extractErrorMessage(errData, res.statusText), errData);
   }
 
@@ -195,6 +214,24 @@ export const api = {
 
   delete: <T>(path: string) =>
     request<T>(path, { method: "DELETE" }),
+
+  postForm: async <T>(path: string, formData: FormData): Promise<T> => {
+    const token = getStoredToken();
+    const slug = getTenantSlug();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (slug) headers["x-tenant-slug"] = slug;
+    const url = buildUrl(path);
+    const res = await fetch(url, { method: "POST", headers, body: formData });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => null);
+      throw new ApiError(res.status, extractErrorMessage(errData, res.statusText), errData);
+    }
+    if (res.status === 204) return undefined as T;
+    const text = await res.text();
+    if (!text) return undefined as T;
+    return JSON.parse(text) as T;
+  },
 
   // Public endpoints (no auth)
   public: {

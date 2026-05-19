@@ -14,6 +14,7 @@ import {
   Users,
   UserCircle,
   Package,
+  Wrench,
   MessageSquare,
   FileBox,
   BarChart3,
@@ -33,9 +34,11 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   permissions: string[];
+  badge?: number;
 }
 
-const navSections: { title: string; items: NavItem[] }[] = [
+// badge counts are injected at runtime in the Sidebar component
+const buildNavSections = (): { title: string; items: NavItem[] }[] => [
   {
     title: "Overview",
     items: [
@@ -64,6 +67,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { label: "Customer Relationship Management (CRM)", href: "/crm", icon: UserCircle, permissions: ["crm.*", "crm.view"] },
       { label: "Employees", href: "/employees", icon: Users, permissions: ["employees.*", "employees.manage"] },
       { label: "Materials", href: "/materials", icon: Package, permissions: ["materials.*", "materials.log"] },
+      { label: "Suppliers", href: "/materials?tab=suppliers", icon: Package, permissions: ["materials.*", "materials.log"] },
+      { label: "Equipment", href: "/equipment", icon: Wrench, permissions: ["materials.*", "materials.view"] },
     ],
   },
   {
@@ -90,6 +95,8 @@ interface SidebarProps {
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
+
+  const navSections = buildNavSections();
 
   const sidebarContent = (
     <aside
@@ -254,8 +261,20 @@ function NavLink({
       )}
       title={collapsed ? item.label : undefined}
     >
-      <item.icon className={cn("h-[18px] w-[18px] shrink-0", isActive && "text-white")} />
-      {!collapsed && <span className="leading-snug break-words">{item.label}</span>}
+      <div className="relative shrink-0">
+        <item.icon className={cn("h-[18px] w-[18px]", isActive && "text-white")} />
+        {item.badge && collapsed && (
+          <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-white">
+            {item.badge > 9 ? "9+" : item.badge}
+          </span>
+        )}
+      </div>
+      {!collapsed && <span className="flex-1 leading-snug break-words">{item.label}</span>}
+      {!collapsed && item.badge ? (
+        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+          {item.badge > 99 ? "99+" : item.badge}
+        </span>
+      ) : null}
     </Link>
   );
 }

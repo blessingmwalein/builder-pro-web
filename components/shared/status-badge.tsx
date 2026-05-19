@@ -25,6 +25,12 @@ const statusColors: Record<string, string> = {
   PAID: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400",
   OVERDUE: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400",
   VOID: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
+  // Stage statuses
+  SKIPPED: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
+  // Change Request statuses
+  SUBMITTED: "bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-400",
+  UNDER_REVIEW: "bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-400",
+  IMPLEMENTED: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400",
   // Time
   PENDING: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
   // Priority
@@ -46,6 +52,10 @@ const displayNames: Record<string, string> = {
   PARTIALLY_PAID: "Partial",
   PAST_DUE: "Past Due",
   TRIAL_EXPIRED: "Trial Expired",
+  UNDER_REVIEW: "Under Review",
+  CLIENT_INITIATED: "Client",
+  SCOPE_CHANGE: "Scope Change",
+  DESIGN_CHANGE: "Design Change",
 };
 
 interface StatusBadgeProps {

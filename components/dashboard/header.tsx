@@ -57,7 +57,7 @@ export default function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: ()
     : "??";
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-6 shadow-sm">
       <div className="flex items-center gap-2">
         {/* Mobile menu toggle */}
         {onMobileMenuToggle && (
@@ -76,7 +76,7 @@ export default function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: ()
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Search projects, tasks, clients..."
-          className="pl-10 bg-muted/50 border-0 focus-visible:ring-1"
+          className="pl-10 bg-background border-border focus-visible:ring-1 focus-visible:ring-primary/30"
         />
         </div>
       </div>

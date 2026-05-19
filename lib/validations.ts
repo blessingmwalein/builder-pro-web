@@ -101,7 +101,7 @@ export const createQuoteSchema = z.object({
   notes: z.string().optional(),
   paymentTerms: z.string().optional(),
   lineItems: z.array(z.object({
-    category: z.enum(["Labour", "Materials", "Equipment", "Subcontractors", "Overheads", "Margin"]),
+    category: z.string().min(1, "Category is required"),
     description: z.string().min(1, "Description is required"),
     quantity: z.coerce.number().min(0.01, "Quantity must be positive"),
     unitPrice: z.coerce.number().min(0, "Price must be non-negative"),

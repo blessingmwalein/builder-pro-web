@@ -113,6 +113,26 @@ export const createSupplier = createAsyncThunk(
   async (data: Omit<Supplier, "id">) => api.post<Supplier>("/materials/suppliers", data)
 );
 
+export const updateMaterial = createAsyncThunk(
+  "materials/update",
+  async ({ id, data }: {
+    id: string;
+    data: {
+      name?: string; sku?: string; unit?: string; unitCost?: number;
+      supplierId?: string; categoryId?: string; reorderAt?: number;
+      description?: string; stockOnHand?: number; reason?: string;
+    };
+  }) => api.put<Material>(`/materials/${id}`, data)
+);
+
+export const deleteMaterial = createAsyncThunk(
+  "materials/delete",
+  async (id: string) => {
+    await api.delete(`/materials/${id}`);
+    return id;
+  }
+);
+
 const materialsSlice = createSlice({
   name: "materials",
   initialState,
@@ -139,6 +159,17 @@ const materialsSlice = createSlice({
       .addCase(createMaterialCategory.fulfilled, (state, { payload }) => {
         state.categories.push(payload);
         state.categories.sort((a, b) => a.name.localeCompare(b.name));
+      })
+      .addCase(updateMaterial.fulfilled, (state, { payload }) => {
+        const idx = state.items.findIndex((m) => m.id === payload.id);
+        if (idx !== -1) state.items[idx] = payload;
+        const lowIdx = state.lowStock.findIndex((m) => m.id === payload.id);
+        if (lowIdx !== -1) state.lowStock[lowIdx] = payload;
+      })
+      .addCase(deleteMaterial.fulfilled, (state, { payload: id }) => {
+        state.items = state.items.filter((m) => m.id !== id);
+        state.lowStock = state.lowStock.filter((m) => m.id !== id);
+        state.total = Math.max(0, state.total - 1);
       });
   },
 });

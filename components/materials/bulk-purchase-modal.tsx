@@ -15,13 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -31,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { DatePickerField } from "@/components/shared/date-picker-field";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface Props {
   open: boolean;
@@ -88,17 +82,26 @@ export function BulkPurchaseModal({ open, onOpenChange, defaultProjectId, onSave
     updateLine(i, {
       materialId,
       unitCost: mat ? String(mat.unitCost) : lines[i].unitCost,
+      description: mat && !lines[i].description ? mat.name : lines[i].description,
     });
   }
 
   const subtotal = useMemo(
-    () =>
-      lines.reduce(
-        (s, l) => s + (Number(l.quantity) || 0) * (Number(l.unitCost) || 0),
-        0,
-      ),
+    () => lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unitCost) || 0), 0),
     [lines],
   );
+
+  const supplierOptions = suppliers.map((s) => ({
+    value: s.id,
+    label: s.name,
+    sublabel: s.email || undefined,
+  }));
+  const projectOptions = projects.map((p) => ({ value: p.id, label: p.name }));
+  const materialOptions = materials.map((m) => ({
+    value: m.id,
+    label: m.name,
+    sublabel: `${m.unit} · Stock: ${m.currentStock ?? 0}`,
+  }));
 
   async function handleSave() {
     const valid = lines.filter(
@@ -140,36 +143,33 @@ export function BulkPurchaseModal({ open, onOpenChange, defaultProjectId, onSave
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Record Bulk Material Purchase</DialogTitle>
+          <DialogTitle>Record Material Purchase</DialogTitle>
           <DialogDescription>
             One supplier receipt, multiple line items. Stock levels update automatically,
-            and if a project is linked, the total is logged as a financial transaction
-            under the Materials budget category.
+            and if a project is linked, the total is logged under the Materials budget category.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label>Supplier</Label>
-            <Select value={supplierId || undefined} onValueChange={(v: string | null) => setSupplierId(v ?? "")}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select supplier" /></SelectTrigger>
-              <SelectContent>
-                {suppliers.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={supplierId}
+              onChange={setSupplierId}
+              options={supplierOptions}
+              placeholder="Search supplier..."
+              emptyText="No suppliers found"
+            />
           </div>
           <div className="space-y-2">
             <Label>Project (optional)</Label>
-            <Select value={projectId || undefined} onValueChange={(v: string | null) => setProjectId(v ?? "")}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="General inventory (no project)" /></SelectTrigger>
-              <SelectContent>
-                {projects.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={projectId}
+              onChange={setProjectId}
+              options={projectOptions}
+              placeholder="General inventory (no project)"
+              emptyText="No projects found"
+            />
           </div>
           <div className="space-y-2">
             <Label>Receipt / Invoice #</Label>
@@ -184,9 +184,9 @@ export function BulkPurchaseModal({ open, onOpenChange, defaultProjectId, onSave
             <DatePickerField value={purchasedAt || undefined} onChange={setPurchasedAt} />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label>Receipt URL (upload link, optional)</Label>
+            <Label>Receipt URL (optional)</Label>
             <Input
-              placeholder="https://drive.google.com/... (paste a link to the receipt/invoice)"
+              placeholder="https://drive.google.com/... (paste a link to the receipt)"
               value={receiptUrl}
               onChange={(e) => setReceiptUrl(e.target.value)}
             />
@@ -214,21 +214,14 @@ export function BulkPurchaseModal({ open, onOpenChange, defaultProjectId, onSave
                 <div key={i} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-12 sm:items-end">
                   <div className="space-y-1 sm:col-span-5">
                     {i === 0 && <Label className="text-xs">Material *</Label>}
-                    <Select
-                      value={line.materialId || undefined}
-                      onValueChange={(v: string | null) => handleMaterialChange(i, v ?? "")}
-                    >
-                      <SelectTrigger className="w-full h-9">
-                        <SelectValue placeholder="Pick material" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {materials.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.name} ({m.unit})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      value={line.materialId}
+                      onChange={(v) => handleMaterialChange(i, v)}
+                      options={materialOptions}
+                      placeholder="Pick material"
+                      emptyText="No materials found"
+                      width="w-80"
+                    />
                   </div>
                   <div className="space-y-1 sm:col-span-2">
                     {i === 0 && <Label className="text-xs">Qty *</Label>}
@@ -254,9 +247,9 @@ export function BulkPurchaseModal({ open, onOpenChange, defaultProjectId, onSave
                   </div>
                   <div className="sm:col-span-2 text-right text-sm font-semibold">
                     {i === 0 && <Label className="text-xs block text-right">Total</Label>}
-                    <span>{formatCurrency(total)}</span>
+                    <span className="leading-9 block">{formatCurrency(total)}</span>
                   </div>
-                  <div className="sm:col-span-1 text-right">
+                  <div className="sm:col-span-1 flex items-end justify-end">
                     <Button
                       type="button"
                       variant="ghost"
@@ -264,9 +257,7 @@ export function BulkPurchaseModal({ open, onOpenChange, defaultProjectId, onSave
                       className="h-9 w-9 p-0"
                       onClick={() =>
                         setLines((current) =>
-                          current.length <= 1
-                            ? current
-                            : current.filter((_, idx) => idx !== i),
+                          current.length <= 1 ? current : current.filter((_, idx) => idx !== i),
                         )
                       }
                       disabled={lines.length <= 1}

@@ -121,7 +121,11 @@ export default function SubscriptionPage() {
       <div className="space-y-1 text-center">
         <h1 className="text-2xl font-bold tracking-tight">Choose Your Plan</h1>
         <p className="text-sm text-muted-foreground">
-          Select the package that fits your business. Upgrade any time.
+          {accountType === "INDIVIDUAL"
+            ? "Plans for individual contractors and sole tradespeople."
+            : accountType === "COMPANY"
+            ? "Plans for construction companies and engineering firms."
+            : "Select the package that fits your business. Upgrade any time."}
         </p>
       </div>
 
@@ -173,13 +177,14 @@ export default function SubscriptionPage() {
 
       {/* Horizontal plans grid */}
       <div className="grid gap-4 md:grid-cols-3">
-        {visiblePlans.map((plan) => {
+        {visiblePlans.map((plan, idx) => {
           const isSelected = selectedPlan === plan.code;
           const price =
             billingCycle === "ANNUAL"
               ? toMoney(plan.annualPrice)
               : toMoney(plan.monthlyPrice);
           const isEnterprise = plan.code === "ENTERPRISE";
+          const isRecommended = idx === Math.floor(visiblePlans.length / 2);
 
           return (
             <Card
@@ -187,7 +192,7 @@ export default function SubscriptionPage() {
               onClick={() => setSelectedPlan(plan.code)}
               className={`flex cursor-pointer flex-col transition-all ${
                 isSelected ? "ring-2 ring-primary shadow-md" : "hover:border-primary/40"
-              }`}
+              } ${isRecommended ? "border-primary/50" : ""}`}
             >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-2">
@@ -195,7 +200,10 @@ export default function SubscriptionPage() {
                     {isEnterprise && <Crown className="h-4 w-4 text-primary" />}
                     {plan.name}
                   </CardTitle>
-                  {isSelected && <Check className="h-4 w-4 text-primary" />}
+                  <div className="flex items-center gap-1.5">
+                    {isRecommended && <Badge className="text-xs">Recommended</Badge>}
+                    {isSelected && <Check className="h-4 w-4 text-primary" />}
+                  </div>
                 </div>
                 {plan.description && <CardDescription>{plan.description}</CardDescription>}
               </CardHeader>

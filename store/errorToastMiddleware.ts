@@ -46,6 +46,10 @@ export const errorToastMiddleware: Middleware = () => (next) => (action) => {
   const result = next(action);
 
   if (isRejected(action)) {
+    const typed = action as { payload?: { status?: number } };
+    // 402 = subscription expired — the user is redirected to /subscription-expired, no toast needed.
+    if (typed.payload?.status === 402) return result;
+
     const message = extractMessage(action);
     if (message) {
       toast.error(message, {

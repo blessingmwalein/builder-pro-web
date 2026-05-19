@@ -1,6 +1,22 @@
-import { pdf, Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { pdf, Document, Page, Text, View, StyleSheet, Image, Svg, Path } from "@react-pdf/renderer";
+import type { DocumentProps } from "@react-pdf/renderer";
+import QRCode from "qrcode";
 import type { ReactElement } from "react";
 import type { Invoice, Quote, Tenant } from "@/types";
+
+const BRAND_COLOR = "#7C2D12"; // matches oklch(0.365 0.135 22) brown/rust primary
+const ACCENT_COLOR = "#F97316";
+
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://ownit2buildit.com";
+
+async function generateQRDataUrl(text: string): Promise<string> {
+  return QRCode.toDataURL(text, {
+    width: 80,
+    margin: 1,
+    color: { dark: BRAND_COLOR, light: "#FFFFFF" },
+    errorCorrectionLevel: "M",
+  });
+}
 
 const styles = StyleSheet.create({
   page: {
@@ -9,11 +25,31 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
   letterhead: {
-    backgroundColor: "#1E3A8A",
+    backgroundColor: BRAND_COLOR,
     borderRadius: 6,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 12,
+    position: "relative",
+    overflow: "hidden",
+  },
+  decorativeCircle1: {
+    position: "absolute",
+    right: -20,
+    top: -20,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  },
+  decorativeCircle2: {
+    position: "absolute",
+    left: "40%",
+    bottom: -30,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
   },
   companyName: {
     fontSize: 16,
@@ -36,6 +72,46 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: "#BFDBFE",
   },
+  footer: {
+    position: "absolute",
+    bottom: 25,
+    left: 26,
+    right: 26,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    paddingTop: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  footerBrand: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  footerLogoContainer: {
+    width: 24,
+    height: 24,
+    backgroundColor: BRAND_COLOR,
+    borderRadius: 4,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 6,
+  },
+  footerBrandText: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: BRAND_COLOR,
+  },
+  footerVerif: {
+    fontSize: 7,
+    color: "#94A3B8",
+    textAlign: "right",
+    marginTop: 2,
+  },
+  qrImage: {
+    width: 48,
+    height: 48,
+  },
   metadataRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -43,14 +119,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   metadataPill: {
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    borderRadius: 14,
-    backgroundColor: "#EFF6FF",
+    borderRadius: 4,
+    backgroundColor: BRAND_COLOR,
     paddingHorizontal: 10,
     paddingVertical: 4,
     fontSize: 9,
-    color: "#1E40AF",
+    color: "#FFFFFF",
     fontWeight: 700,
   },
   partyGrid: {
@@ -238,6 +312,8 @@ function CompanyLetterhead({
 }) {
   return (
     <View style={styles.letterhead}>
+      <View style={styles.decorativeCircle1} />
+      <View style={styles.decorativeCircle2} />
       <Text style={styles.companyName}>{company.displayName}</Text>
       <Text style={styles.companyMeta}>
         {company.accountType === "INDIVIDUAL" ? "Individual Account" : "Company Account"}
@@ -250,9 +326,50 @@ function CompanyLetterhead({
   );
 }
 
+function QuoteInvoiceFooter({
+  id, type, qrDataUrl,
+}: {
+  id: string;
+  type: "Quote" | "Invoice";
+  qrDataUrl: string;
+}) {
+  const LogoSvg = () => (
+    <Svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+      <Path
+        d="M3 21h18M3 7v14M21 7v14M9 21V11h6v10M7 3h10"
+        stroke="#FFFFFF"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+
+  return (
+    <View style={styles.footer} fixed>
+      <View>
+        <View style={styles.footerBrand}>
+          <View style={styles.footerLogoContainer}>
+            <LogoSvg />
+          </View>
+          <Text style={styles.footerBrandText}>ownit2buildit</Text>
+        </View>
+        <Text style={styles.footerVerif}>Verified Digital Document — ownit2buildit.com</Text>
+      </View>
+
+      <View style={{ alignItems: "flex-end" }}>
+        <Image src={qrDataUrl} style={styles.qrImage} />
+        <Text style={styles.footerVerif}>
+          Scan to verify · {type} {id.slice(0, 8).toUpperCase()}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 async function savePdfBlob(fileName: string, documentNode: ReactElement) {
   if (typeof window === "undefined") return;
-  const blob = await pdf(documentNode).toBlob();
+  const blob = await pdf(documentNode as ReactElement<DocumentProps>).toBlob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -266,6 +383,8 @@ async function savePdfBlob(fileName: string, documentNode: ReactElement) {
 export async function downloadQuoteProformaPdf(quote: Quote, tenant: Tenant | null) {
   const company = normalizeCompany(tenant, quote.client?.name ?? null);
   const currencyCode = company.defaultCurrency || "USD";
+  const verifyUrl = `${BASE_URL}/verify/quote/${quote.id}`;
+  const qrDataUrl = await generateQRDataUrl(verifyUrl);
 
   const doc = (
     <Document>
@@ -324,7 +443,9 @@ export async function downloadQuoteProformaPdf(quote: Quote, tenant: Tenant | nu
         </View>
         {quote.lineItems.map((item, index) => (
           <View key={`${item.description}-${index}`} style={styles.tableRow}>
-            <Text style={styles.colCategory}>{item.category}</Text>
+            <View style={styles.colCategory}>
+              <Text style={{ fontSize: 7, fontWeight: 700, color: BRAND_COLOR }}>{item.category}</Text>
+            </View>
             <Text style={styles.colDescription}>{item.description}</Text>
             <Text style={styles.colSmall}>{String(item.quantity)}</Text>
             <Text style={styles.colWide}>{currency(item.unitPrice, currencyCode)}</Text>
@@ -342,19 +463,21 @@ export async function downloadQuoteProformaPdf(quote: Quote, tenant: Tenant | nu
         {(quote.notes || quote.paymentTerms) && (
           <View style={styles.notesBlock}>
             {quote.notes ? (
-              <>
+              <View style={{ marginBottom: 6 }}>
                 <Text style={styles.notesTitle}>Notes</Text>
                 <Text style={styles.notesText}>{quote.notes}</Text>
-              </>
+              </View>
             ) : null}
             {quote.paymentTerms ? (
-              <>
+              <View>
                 <Text style={styles.notesTitle}>Payment Terms</Text>
                 <Text style={styles.notesText}>{quote.paymentTerms}</Text>
-              </>
+              </View>
             ) : null}
           </View>
         )}
+
+        <QuoteInvoiceFooter id={quote.id} type="Quote" qrDataUrl={qrDataUrl} />
       </Page>
     </Document>
   );
@@ -365,6 +488,8 @@ export async function downloadQuoteProformaPdf(quote: Quote, tenant: Tenant | nu
 export async function downloadInvoicePdf(invoice: Invoice, tenant: Tenant | null) {
   const company = normalizeCompany(tenant, invoice.client?.name ?? null);
   const currencyCode = company.defaultCurrency || "USD";
+  const verifyUrl = `${BASE_URL}/verify/invoice/${invoice.id}`;
+  const qrDataUrl = await generateQRDataUrl(verifyUrl);
 
   const doc = (
     <Document>
@@ -376,7 +501,6 @@ export async function downloadInvoicePdf(invoice: Invoice, tenant: Tenant | null
         />
 
         <View style={styles.metadataRow}>
-          <Text style={styles.metadataPill}>{invoice.status || "DRAFT"}</Text>
           <Text style={styles.label}>Generated {formatDate(new Date().toISOString())}</Text>
         </View>
 
@@ -439,19 +563,21 @@ export async function downloadInvoicePdf(invoice: Invoice, tenant: Tenant | null
         {(invoice.notes || invoice.paymentTerms) && (
           <View style={styles.notesBlock}>
             {invoice.notes ? (
-              <>
+              <View style={{ marginBottom: 6 }}>
                 <Text style={styles.notesTitle}>Notes</Text>
                 <Text style={styles.notesText}>{invoice.notes}</Text>
-              </>
+              </View>
             ) : null}
             {invoice.paymentTerms ? (
-              <>
+              <View>
                 <Text style={styles.notesTitle}>Payment Terms</Text>
                 <Text style={styles.notesText}>{invoice.paymentTerms}</Text>
-              </>
+              </View>
             ) : null}
           </View>
         )}
+
+        <QuoteInvoiceFooter id={invoice.id} type="Invoice" qrDataUrl={qrDataUrl} />
       </Page>
     </Document>
   );

@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import api, { setTokens, setTenantSlug, clearAuth } from "@/lib/api";
+import api, { ApiError, setTokens, setTenantSlug, clearAuth } from "@/lib/api";
 import type {
   AuthState,
   LoginRequest,
@@ -21,16 +21,26 @@ const initialState: AuthState = {
   refreshToken: null,
   isAuthenticated: false,
   isLoading: true,
+  subscriptionExpired: false,
+  subscriptionErrorCode: null,
 };
 
 export const login = createAsyncThunk(
   "auth/login",
-  async (credentials: LoginRequest) => {
+  async (credentials: LoginRequest, { rejectWithValue }) => {
     const data = await api.public.post<LoginResponse>("/auth/login", credentials);
     setTokens(data.accessToken, data.refreshToken);
-    const me = await api.get<MeResponse>("/auth/me");
-    setTenantSlug(me.tenant.slug);
-    return { tokens: data, me };
+    try {
+      const me = await api.get<MeResponse>("/auth/me");
+      setTenantSlug(me.tenant.slug);
+      return { tokens: data, me };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 402) {
+        const code = (err.data as { code?: string } | null)?.code;
+        return rejectWithValue({ status: 402, message: err.message, code });
+      }
+      throw err;
+    }
   }
 );
 
@@ -45,9 +55,20 @@ export const register = createAsyncThunk(
   }
 );
 
-export const fetchMe = createAsyncThunk("auth/fetchMe", async () => {
-  return api.get<MeResponse>("/auth/me");
-});
+export const fetchMe = createAsyncThunk(
+  "auth/fetchMe",
+  async (_, { rejectWithValue }) => {
+    try {
+      return await api.get<MeResponse>("/auth/me");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const code = (err.data as { code?: string } | null)?.code;
+        return rejectWithValue({ status: err.status, message: err.message, code });
+      }
+      return rejectWithValue({ status: 0, message: String(err) });
+    }
+  }
+);
 
 export const forgotPassword = createAsyncThunk(
   "auth/forgotPassword",
@@ -76,6 +97,8 @@ export const authSlice = createSlice({
       state.refreshToken = null;
       state.isAuthenticated = false;
       state.isLoading = false;
+      state.subscriptionExpired = false;
+      state.subscriptionErrorCode = null;
     },
     setLoading(state, action) {
       state.isLoading = action.payload;
@@ -105,10 +128,17 @@ export const authSlice = createSlice({
         state.permissions = payload.me.permissions;
         state.isAuthenticated = true;
         state.isLoading = false;
+        state.subscriptionExpired = false;
+        state.subscriptionErrorCode = null;
       })
-      .addCase(login.rejected, (state) => {
+      .addCase(login.rejected, (state, action) => {
         state.isLoading = false;
         state.isAuthenticated = false;
+        const payload = action.payload as { status?: number; code?: string } | undefined;
+        if (payload?.status === 402) {
+          state.subscriptionExpired = true;
+          state.subscriptionErrorCode = payload.code ?? 'SUBSCRIPTION_EXPIRED';
+        }
       })
       // Register
       .addCase(register.fulfilled, (state, { payload }) => {
@@ -118,6 +148,8 @@ export const authSlice = createSlice({
         state.permissions = payload.me.permissions;
         state.isAuthenticated = true;
         state.isLoading = false;
+        state.subscriptionExpired = false;
+        state.subscriptionErrorCode = null;
       })
       .addCase(register.rejected, (state) => {
         state.isLoading = false;
@@ -132,11 +164,25 @@ export const authSlice = createSlice({
         state.permissions = payload.permissions;
         state.isAuthenticated = true;
         state.isLoading = false;
+        state.subscriptionExpired = false;
+        state.subscriptionErrorCode = null;
       })
-      .addCase(fetchMe.rejected, (state) => {
-        state.isAuthenticated = false;
-        state.isLoading = false;
-        clearAuth();
+      .addCase(fetchMe.rejected, (state, action) => {
+        const payload = action.payload as { status?: number; code?: string } | undefined;
+        if (payload?.status === 402) {
+          // Authenticated but subscription expired — keep tokens so PaymentModal works.
+          state.isAuthenticated = false;
+          state.isLoading = false;
+          state.subscriptionExpired = true;
+          state.subscriptionErrorCode = payload.code ?? 'SUBSCRIPTION_EXPIRED';
+          // Do NOT call clearAuth() — tokens must stay for the activation call.
+        } else {
+          state.isAuthenticated = false;
+          state.isLoading = false;
+          state.subscriptionExpired = false;
+          state.subscriptionErrorCode = null;
+          clearAuth();
+        }
       });
   },
 });
