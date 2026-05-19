@@ -1,51 +1,51 @@
 "use client";
 
 import {
-  FolderKanban,
-  DollarSign,
+  Layers,
+  TrendingUp,
+  ClipboardList,
+  BarChart3,
   Clock,
-  FileText,
-  Users,
-  Globe,
+  ShieldCheck,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
 const features = [
   {
-    icon: FolderKanban,
-    title: "Project Tracking",
+    icon: Layers,
+    title: "Stage-Driven Timeline",
     description:
-      "Monitor every project phase from start to finish. Organize tasks, set milestones, and track progress in real-time.",
+      "Replace spreadsheets with a living project timeline. Each stage groups its own tasks, documents, and budget lines. Stage gates block completion until required items are signed off — no more skipping steps.",
   },
   {
-    icon: DollarSign,
-    title: "Budget Control",
+    icon: ClipboardList,
+    title: "Procurement Workflow",
     description:
-      "Track costs against budgets, manage material expenses, and maintain healthy margins across all your projects.",
+      "Raise a purchase request, issue a PO, and confirm delivery — all tracked. Every purchase links back to your project budget so you see real-time cost vs. plan without manual reconciliation.",
+  },
+  {
+    icon: TrendingUp,
+    title: "Financial Analytics",
+    description:
+      "Budget performance, profitability, and variance — broken down per category and stage. Catch cost overruns before they compound with live alerts when spend exceeds thresholds.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Materials Audit Trail",
+    description:
+      "Every price change and stock correction requires a written reason and creates an immutable log. Prevents tampering, simplifies reconciliation, and gives you confidence in every number.",
   },
   {
     icon: Clock,
-    title: "Time Management",
+    title: "Time & Payroll",
     description:
-      "Log hours, track employee time, approve timesheets, and export payroll data — all from one dashboard.",
+      "Crew members log hours from their phone. Supervisors review and approve timesheets in one click. Export payroll data at month-end — no more chasing paper timesheets.",
   },
   {
-    icon: FileText,
+    icon: BarChart3,
     title: "Quote & Invoice",
     description:
-      "Create professional quotes, convert them to invoices, and track payments. Supports PayNow & EcoCash.",
-  },
-  {
-    icon: Users,
-    title: "Team Coordination",
-    description:
-      "Assign tasks, send messages, share documents, and keep your entire team aligned on every project.",
-  },
-  {
-    icon: Globe,
-    title: "Client Portal",
-    description:
-      "Give clients real-time visibility into project progress, budgets, and documents with a dedicated portal.",
+      "Create branded quotes in minutes, get client sign-off, and convert to an invoice instantly. Track payment status and send reminders — with PayNow and EcoCash support built in.",
   },
 ];
 
@@ -75,8 +75,7 @@ export function Features() {
             Everything you need to run construction projects
           </h2>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            From the first quote to the final invoice, ownit2buildit keeps
-            everything organized in one place.
+            From the first quote to the final handover — one platform that keeps every project on track and every number honest.
           </p>
         </div>
 
