@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -98,7 +98,7 @@ function ReasonBanner({ code }: { code: SubscriptionErrorCode }) {
   );
 }
 
-export default function SubscriptionExpiredPage() {
+function SubscriptionExpiredContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { tenant } = useAuth();
@@ -276,6 +276,20 @@ export default function SubscriptionExpiredPage() {
         }}
       />
     </div>
+  );
+}
+
+export default function SubscriptionExpiredPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <SubscriptionExpiredContent />
+    </Suspense>
   );
 }
 
