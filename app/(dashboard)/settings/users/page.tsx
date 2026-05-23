@@ -11,6 +11,7 @@ import {
   ShieldOff,
   ShieldCheck,
   Pencil,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/api";
@@ -71,6 +72,9 @@ export default function UsersSettingsPage() {
   // Edit form
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [editForm, setEditForm] = useState({ firstName: "", lastName: "", phone: "" });
+  const [editRoleIds, setEditRoleIds] = useState<string[]>([]);
+  const [editOriginalRoleIds, setEditOriginalRoleIds] = useState<string[]>([]);
+  const [addRoleId, setAddRoleId] = useState("");
   const [editing, setEditing] = useState(false);
 
   // Row action loading
@@ -118,11 +122,21 @@ export default function UsersSettingsPage() {
 
   function openEdit(u: User) {
     setEditTarget(u);
-    setEditForm({
-      firstName: u.firstName,
-      lastName: u.lastName,
-      phone: u.phone ?? "",
-    });
+    setEditForm({ firstName: u.firstName, lastName: u.lastName, phone: u.phone ?? "" });
+    const currentIds = u.roles.map((r) => r.id);
+    setEditRoleIds(currentIds);
+    setEditOriginalRoleIds(currentIds);
+    setAddRoleId("");
+  }
+
+  function addRoleToEdit(roleId: string) {
+    if (!roleId || editRoleIds.includes(roleId)) return;
+    setEditRoleIds((prev) => [...prev, roleId]);
+    setAddRoleId("");
+  }
+
+  function removeRoleFromEdit(roleId: string) {
+    setEditRoleIds((prev) => prev.filter((id) => id !== roleId));
   }
 
   async function handleEditSave() {
@@ -130,6 +144,14 @@ export default function UsersSettingsPage() {
     setEditing(true);
     try {
       await api.put(`/users/${editTarget.id}`, editForm);
+
+      const toAdd = editRoleIds.filter((id) => !editOriginalRoleIds.includes(id));
+      const toRemove = editOriginalRoleIds.filter((id) => !editRoleIds.includes(id));
+      await Promise.all([
+        ...toAdd.map((roleId) => api.post(`/rbac/users/${editTarget.id}/roles`, { roleId })),
+        ...toRemove.map((roleId) => api.delete(`/rbac/users/${editTarget.id}/roles/${roleId}`)),
+      ]);
+
       toast.success("User updated");
       setEditTarget(null);
       await loadUsers();
@@ -407,7 +429,7 @@ export default function UsersSettingsPage() {
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
             <DialogDescription>
-              Update the user&rsquo;s basic profile details.
+              Update {editTarget?.firstName}&apos;s profile and role assignments.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -434,9 +456,60 @@ export default function UsersSettingsPage() {
                 onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
               />
             </div>
+
+            {/* Role management */}
+            <div className="space-y-2">
+              <Label>Roles</Label>
+              <div className="flex flex-wrap gap-1.5 min-h-[32px] rounded-md border bg-muted/30 px-3 py-2">
+                {editRoleIds.length === 0 && (
+                  <span className="text-xs text-muted-foreground self-center">No roles assigned</span>
+                )}
+                {editRoleIds.map((id) => {
+                  const r = roles.find((ro) => ro.id === id);
+                  return r ? (
+                    <Badge key={id} variant="secondary" className="gap-1 pr-1 text-xs">
+                      {r.name}
+                      <button
+                        type="button"
+                        className="rounded-full hover:bg-muted ml-0.5"
+                        onClick={() => removeRoleFromEdit(id)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ) : null;
+                })}
+              </div>
+              <div className="flex gap-2">
+                <Select
+                  value={addRoleId}
+                  onValueChange={setAddRoleId}
+                >
+                  <SelectTrigger className="flex-1 text-sm">
+                    <SelectValue placeholder="Add a role…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles
+                      .filter((r) => !editRoleIds.includes(r.id))
+                      .map((r) => (
+                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!addRoleId}
+                  onClick={() => addRoleToEdit(addRoleId)}
+                >
+                  Add
+                </Button>
+              </div>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditTarget(null)}>
+            <Button variant="outline" onClick={() => setEditTarget(null)} disabled={editing}>
               Cancel
             </Button>
             <Button onClick={handleEditSave} disabled={editing}>

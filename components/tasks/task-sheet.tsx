@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import { Edit2, Trash2, ChevronRight } from "lucide-react";
-import { useAppDispatch } from "@/lib/hooks";
+import { Edit2, Trash2, ChevronRight, Paperclip, SmilePlus, SendHorizontal, MessageSquare } from "lucide-react";
+import { useAppDispatch, useAuth } from "@/lib/hooks";
 import api from "@/lib/api";
 import {
   updateTaskStatus,
@@ -87,6 +87,7 @@ function normalizeComments(comments: unknown) {
     id: c?.id,
     content: c?.content ?? "",
     createdAt: c?.createdAt ?? new Date().toISOString(),
+    userId: c?.userId ?? c?.user?.id ?? null,
     user: {
       firstName: c?.user?.firstName ?? "Unknown",
       lastName:  c?.user?.lastName  ?? "User",
@@ -105,6 +106,42 @@ function normalizeChecklists(checklists: unknown) {
       isDone: Boolean(item?.isCompleted ?? item?.isDone),
     })) : [],
   }));
+}
+
+// ─── Chat helpers ─────────────────────────────────────────────────────────────
+
+const QUICK_EMOJIS = ["👍", "✅", "🔥", "⚠️", "❌", "💬", "⏰", "💰", "🏗️", "📋"];
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+}
+
+function renderMentions(content: string): React.ReactNode {
+  const parts = content.split(/(@[\w][\w\s]*?(?= |$|@|\n))/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("@") ? (
+          <span
+            key={i}
+            className="inline-rounded font-semibold text-primary bg-primary/10 rounded px-1 text-[13px]"
+          >
+            {part}
+          </span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -129,6 +166,7 @@ export interface TaskSheetProps {
 
 export function TaskSheet({ open, onOpenChange, taskId, onRefresh }: TaskSheetProps) {
   const dispatch = useAppDispatch();
+  const { user: currentUser } = useAuth();
 
   const [task, setTask]               = useState<Task | null>(null);
   const [loading, setLoading]         = useState(false);
@@ -141,6 +179,14 @@ export function TaskSheet({ open, onOpenChange, taskId, onRefresh }: TaskSheetPr
   const [clTitle, setClTitle]         = useState("");
   const [clItems, setClItems]         = useState("");
   const [saving, setSaving]           = useState(false);
+
+  // ── Chat state ──────────────────────────────────────────────────────────────
+  const [mentionSearch, setMentionSearch] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles]   = useState<File[]>([]);
+  const [emojiOpen, setEmojiOpen]         = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef    = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef   = useRef<HTMLInputElement>(null);
 
   const loadTask = useCallback(async (id: string) => {
     setLoading(true);
@@ -201,14 +247,40 @@ export function TaskSheet({ open, onOpenChange, taskId, onRefresh }: TaskSheetPr
   }
 
   async function postComment() {
-    if (!task || !commentText.trim()) return;
+    if (!task || (!commentText.trim() && pendingFiles.length === 0)) return;
     setSaving(true);
     try {
-      await dispatch(addComment({ taskId: task.id, content: commentText.trim() })).unwrap();
+      let content = commentText.trim();
+      if (pendingFiles.length > 0) {
+        const fileLines = pendingFiles.map((f) => `📎 ${f.name}`).join("\n");
+        content = content ? `${content}\n${fileLines}` : fileLines;
+      }
+      await dispatch(addComment({ taskId: task.id, content })).unwrap();
       setCommentText("");
+      setPendingFiles([]);
+      setMentionSearch(null);
       void loadTask(task.id);
     } catch { toast.error("Failed to add comment"); }
     setSaving(false);
+  }
+
+  function handleCommentInput(val: string) {
+    setCommentText(val);
+    const cursor = textareaRef.current?.selectionStart ?? val.length;
+    const before = val.slice(0, cursor);
+    const m = before.match(/@(\w*)$/);
+    setMentionSearch(m ? m[1] : null);
+  }
+
+  function insertMention(u: AppUser) {
+    const cursor = textareaRef.current?.selectionStart ?? commentText.length;
+    const before = commentText.slice(0, cursor);
+    const after  = commentText.slice(cursor);
+    const atIdx  = before.lastIndexOf("@");
+    const newText = before.slice(0, atIdx) + `@${u.firstName} ${u.lastName} ` + after;
+    setCommentText(newText);
+    setMentionSearch(null);
+    setTimeout(() => textareaRef.current?.focus(), 0);
   }
 
   async function createChecklist() {
@@ -237,6 +309,22 @@ export function TaskSheet({ open, onOpenChange, taskId, onRefresh }: TaskSheetPr
   const checklists       = normalizeChecklists((task as any)?.checklists);
   const assignedIds      = new Set(assignees.map((a) => a.userId));
   const availableUsers   = users.filter((u) => !assignedIds.has(u.id));
+
+  const mentionUsers = mentionSearch !== null
+    ? users
+        .filter((u) =>
+          `${u.firstName} ${u.lastName}`.toLowerCase().includes(mentionSearch.toLowerCase()) ||
+          u.email.toLowerCase().includes(mentionSearch.toLowerCase())
+        )
+        .slice(0, 5)
+    : [];
+
+  // Scroll to bottom when new comments arrive
+  useEffect(() => {
+    if (tab === "comments" && comments.length > 0) {
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
+    }
+  }, [comments.length, tab]);
   const totalItems       = checklists.reduce((n, cl) => n + cl.items.length, 0);
   const doneItems        = checklists.reduce((n, cl) => n + cl.items.filter((i: { isDone: boolean }) => i.isDone).length, 0);
   const clPct            = totalItems > 0 ? Math.round((doneItems / totalItems) * 100) : 0;
@@ -331,7 +419,7 @@ export function TaskSheet({ open, onOpenChange, taskId, onRefresh }: TaskSheetPr
               ))}
             </TabsList>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className={`flex-1 ${tab === "comments" ? "overflow-hidden flex flex-col" : "overflow-y-auto"}`}>
 
               {/* ── Overview ── */}
               <TabsContent value="overview" className="mt-0 space-y-4 p-5">
@@ -468,52 +556,197 @@ export function TaskSheet({ open, onOpenChange, taskId, onRefresh }: TaskSheetPr
               </TabsContent>
 
               {/* ── Comments ── */}
-              <TabsContent value="comments" className="mt-0 flex flex-col gap-3 p-5">
+              <TabsContent value="comments" className="mt-0 flex flex-col h-full data-[state=inactive]:hidden">
                 {loading ? (
-                  <div className="space-y-3">
+                  <div className="p-5 space-y-3">
                     {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14" />)}
                   </div>
                 ) : (
                   <>
-                    <ScrollArea className="max-h-[340px]">
-                      <div className="space-y-3 pr-2">
-                        {comments.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No comments yet. Be the first.</p>
-                        ) : (
-                          comments.map((c) => (
-                            <div key={c.id} className="flex items-start gap-2.5">
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                                {getInitials(c.user.firstName, c.user.lastName)}
-                              </div>
-                              <div className="min-w-0 rounded-2xl border bg-muted/50 px-3 py-2">
-                                <p className="text-xs font-semibold">{c.user.firstName} {c.user.lastName}</p>
-                                <p className="text-sm leading-relaxed">{c.content}</p>
-                                <p className="mt-0.5 text-[10px] text-muted-foreground">
-                                  {new Date(c.createdAt).toLocaleString()}
+                    {/* ── Message list ── */}
+                    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 thin-scroll">
+                      {comments.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-3">
+                            <MessageSquare className="h-5 w-5 text-muted-foreground" />
+                          </div>
+                          <p className="text-sm font-medium">No messages yet</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Start the conversation. Use @ to mention a teammate.
+                          </p>
+                        </div>
+                      ) : (
+                        comments.map((c) => {
+                          const isMe = c.userId === currentUser?.id;
+                          return (
+                            <div
+                              key={c.id}
+                              className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : ""}`}
+                            >
+                              {!isMe && (
+                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                                  {getInitials(c.user.firstName, c.user.lastName)}
+                                </div>
+                              )}
+                              <div className={`flex flex-col gap-0.5 max-w-[78%] ${isMe ? "items-end" : "items-start"}`}>
+                                {!isMe && (
+                                  <p className="text-[10px] font-semibold text-muted-foreground px-1">
+                                    {c.user.firstName} {c.user.lastName}
+                                  </p>
+                                )}
+                                <div
+                                  className={`px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap ${
+                                    isMe
+                                      ? "rounded-2xl rounded-br-sm bg-primary text-primary-foreground"
+                                      : "rounded-2xl rounded-bl-sm bg-muted"
+                                  }`}
+                                >
+                                  {renderMentions(c.content)}
+                                </div>
+                                <p className="text-[10px] text-muted-foreground px-1">
+                                  {relativeTime(c.createdAt)}
                                 </p>
                               </div>
                             </div>
-                          ))
-                        )}
+                          );
+                        })
+                      )}
+                      <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* ── Mention suggestions ── */}
+                    {mentionSearch !== null && mentionUsers.length > 0 && (
+                      <div className="mx-4 mb-1 overflow-hidden rounded-xl border bg-background shadow-lg">
+                        <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Mention
+                        </p>
+                        {mentionUsers.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-muted"
+                            onMouseDown={(e) => { e.preventDefault(); insertMention(u); }}
+                          >
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                              {getInitials(u.firstName, u.lastName)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">
+                                {u.firstName} {u.lastName}
+                              </p>
+                              <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+                            </div>
+                          </button>
+                        ))}
                       </div>
-                    </ScrollArea>
-                    <div className="space-y-2">
-                      <Textarea
-                        rows={2}
-                        placeholder="Write a comment... (Ctrl+Enter to send)"
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void postComment();
-                        }}
-                      />
-                      <Button
-                        size="sm"
-                        disabled={!commentText.trim() || saving}
-                        onClick={() => void postComment()}
-                      >
-                        Add Comment
-                      </Button>
+                    )}
+
+                    {/* ── Pending file chips ── */}
+                    {pendingFiles.length > 0 && (
+                      <div className="mx-4 mb-1 flex flex-wrap gap-1.5">
+                        {pendingFiles.map((f, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-1 rounded-full border bg-muted/60 px-2.5 py-1 text-xs"
+                          >
+                            <Paperclip className="h-3 w-3 text-muted-foreground" />
+                            <span className="max-w-[120px] truncate">{f.name}</span>
+                            <button
+                              type="button"
+                              className="ml-0.5 text-muted-foreground hover:text-destructive"
+                              onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ── Composer ── */}
+                    <div className="shrink-0 border-t px-4 py-3">
+                      <div className="flex items-end gap-2">
+                        {/* File attach */}
+                        <button
+                          type="button"
+                          title="Attach file"
+                          className="mb-1 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Paperclip className="h-4 w-4" />
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files ?? []);
+                            setPendingFiles((prev) => [...prev, ...files]);
+                            e.target.value = "";
+                          }}
+                        />
+
+                        {/* Textarea */}
+                        <Textarea
+                          ref={textareaRef}
+                          rows={1}
+                          className="min-h-[38px] flex-1 resize-none text-sm"
+                          placeholder="Message… type @ to mention"
+                          value={commentText}
+                          onChange={(e) => handleCommentInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (mentionSearch !== null && mentionUsers.length > 0) return;
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              void postComment();
+                            }
+                          }}
+                        />
+
+                        {/* Emoji picker */}
+                        <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="mb-1 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                            >
+                              <SmilePlus className="h-4 w-4" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" side="top" className="w-auto p-2">
+                            <div className="grid grid-cols-5 gap-1">
+                              {QUICK_EMOJIS.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-lg transition-colors hover:bg-muted"
+                                  onClick={() => {
+                                    setCommentText((prev) => prev + emoji);
+                                    setEmojiOpen(false);
+                                    setTimeout(() => textareaRef.current?.focus(), 0);
+                                  }}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+
+                        {/* Send */}
+                        <Button
+                          size="sm"
+                          className="mb-1 h-8 w-8 shrink-0 p-0"
+                          disabled={(!commentText.trim() && pendingFiles.length === 0) || saving}
+                          onClick={() => void postComment()}
+                        >
+                          <SendHorizontal className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        Enter to send · Shift+Enter for new line · @ to mention
+                      </p>
                     </div>
                   </>
                 )}

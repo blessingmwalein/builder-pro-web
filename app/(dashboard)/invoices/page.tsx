@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Receipt, Plus } from "lucide-react";
-import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
 import { fetchInvoices } from "@/store/slices/invoicesSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -77,6 +77,7 @@ export default function InvoicesPage() {
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
   const { items, total, isLoading } = useAppSelector((s) => s.invoices);
+  const canCreateInvoice = useHasAnyPermission(["invoices.*", "invoices.create"]);
   const [filter, setFilter] = useState<InvoiceStatus | "ALL">("ALL");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -147,9 +148,11 @@ export default function InvoicesPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Invoices" description="Manage invoices and track payments.">
-        <Button onClick={() => router.push("/invoices/new")}>
-          <Plus className="mr-2 h-4 w-4" /> New Invoice
-        </Button>
+        {canCreateInvoice && (
+          <Button onClick={() => router.push("/invoices/new")}>
+            <Plus className="mr-2 h-4 w-4" /> New Invoice
+          </Button>
+        )}
       </PageHeader>
 
       {/* Stats */}

@@ -10,7 +10,7 @@ import {
   PauseCircle,
   DollarSign,
 } from "lucide-react";
-import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
 import { fetchProjects } from "@/store/slices/projectsSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatsCard } from "@/components/shared/stats-card";
@@ -38,6 +38,7 @@ export default function ProjectsPage() {
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
   const { items: projects, total, isLoading } = useAppSelector((s) => s.projects);
+  const canCreateProject = useHasAnyPermission(["projects.*", "projects.create"]);
 
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "ALL">("ALL");
@@ -153,10 +154,12 @@ export default function ProjectsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Projects" description="Manage and track all your construction projects.">
-        <Button onClick={() => router.push("/projects/new")}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Project
-        </Button>
+        {canCreateProject && (
+          <Button onClick={() => router.push("/projects/new")}>
+            <Plus className="mr-2 h-4 w-4" />
+            New Project
+          </Button>
+        )}
       </PageHeader>
 
       {/* Stats row */}
@@ -214,8 +217,8 @@ export default function ProjectsPage() {
           icon={FolderKanban}
           title="No projects yet"
           description="Create your first project to start tracking budgets, tasks, and timelines."
-          actionLabel="New Project"
-          onAction={() => router.push("/projects/new")}
+          actionLabel={canCreateProject ? "New Project" : undefined}
+          onAction={canCreateProject ? () => router.push("/projects/new") : undefined}
         />
       ) : (
         <DataTable

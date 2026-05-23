@@ -46,7 +46,7 @@ const services = [
     title: "Supplier & Hardware Network",
     tagline: "Connect with local suppliers and streamline procurement",
     description:
-      "Stop chasing quotes over WhatsApp. Link your preferred hardware stores and suppliers directly in BuilderPro. Raise purchase requests, issue purchase orders, and track deliveries — all tied back to your project budget so you always know where the money is going.",
+      "Stop chasing quotes over WhatsApp. Link your preferred hardware stores and suppliers directly in ownit2buildit. Raise purchase requests, issue purchase orders, and track deliveries — all tied back to your project budget so you always know where the money is going.",
     highlights: [
       "Purchase Request → Purchase Order → Delivery workflow",
       "Supplier catalog with real-time unit costs",

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Plus, Download } from "lucide-react";
-import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
 import { fetchEmployees } from "@/store/slices/employeesSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -20,6 +20,7 @@ export default function EmployeesPage() {
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
   const { items, total, isLoading } = useAppSelector((s) => s.employees);
+  const canManageEmployees = useHasAnyPermission(["employees.*", "employees.manage"]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -78,12 +79,16 @@ export default function EmployeesPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Employees" description="Manage your workforce and payroll information.">
-        <Button variant="outline">
-          <Download className="mr-2 h-4 w-4" /> Payroll Export
-        </Button>
-        <Button onClick={() => router.push("/employees/new")}>
-          <Plus className="mr-2 h-4 w-4" /> Add Employee
-        </Button>
+        {canManageEmployees && (
+          <>
+            <Button variant="outline">
+              <Download className="mr-2 h-4 w-4" /> Payroll Export
+            </Button>
+            <Button onClick={() => router.push("/employees/new")}>
+              <Plus className="mr-2 h-4 w-4" /> Add Employee
+            </Button>
+          </>
+        )}
       </PageHeader>
 
       <Input
@@ -98,8 +103,8 @@ export default function EmployeesPage() {
           icon={Users}
           title="No employees yet"
           description="Add employees to start tracking hours and managing your team."
-          actionLabel="Add Employee"
-          onAction={() => router.push("/employees/new")}
+          actionLabel={canManageEmployees ? "Add Employee" : undefined}
+          onAction={canManageEmployees ? () => router.push("/employees/new") : undefined}
         />
       ) : (
         <DataTable

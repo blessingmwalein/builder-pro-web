@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UserCircle, Plus } from "lucide-react";
-import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
 import { fetchClients } from "@/store/slices/crmSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -19,6 +19,7 @@ export default function CrmPage() {
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
   const { clients, total, isLoading } = useAppSelector((s) => s.crm);
+  const canManageCrm = useHasAnyPermission(["crm.*", "crm.manage"]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -88,9 +89,11 @@ export default function CrmPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Customer Relationship Management (CRM)" description="Manage your client relationships and history.">
-        <Button onClick={() => router.push("/crm/new")}>
-          <Plus className="mr-2 h-4 w-4" /> Add Client
-        </Button>
+        {canManageCrm && (
+          <Button onClick={() => router.push("/crm/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Add Client
+          </Button>
+        )}
       </PageHeader>
 
       <Input
@@ -105,8 +108,8 @@ export default function CrmPage() {
           icon={UserCircle}
           title="No clients yet"
           description="Add your first client to start building relationships."
-          actionLabel="Add Client"
-          onAction={() => router.push("/crm/new")}
+          actionLabel={canManageCrm ? "Add Client" : undefined}
+          onAction={canManageCrm ? () => router.push("/crm/new") : undefined}
         />
       ) : (
         <DataTable

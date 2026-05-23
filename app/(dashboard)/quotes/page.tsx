@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Plus, Send, Check, X } from "lucide-react";
-import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
 import { fetchQuotes, sendQuote } from "@/store/slices/quotesSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -73,6 +73,8 @@ export default function QuotesPage() {
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
   const { items, total, isLoading } = useAppSelector((s) => s.quotes);
+  const canCreateQuote = useHasAnyPermission(["quotes.*", "quotes.create"]);
+  const canSendQuote = useHasAnyPermission(["quotes.*", "quotes.send"]);
   const [filter, setFilter] = useState<QuoteStatus | "ALL">("ALL");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -127,7 +129,7 @@ export default function QuotesPage() {
       header: "",
       cell: (q) => (
         <div className="flex gap-1">
-          {q.status === "DRAFT" && (
+          {q.status === "DRAFT" && canSendQuote && (
             <Button
               variant="ghost"
               size="sm"
@@ -148,10 +150,12 @@ export default function QuotesPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Quotes" description="Create and manage project quotes for your clients.">
-        <Button onClick={() => router.push("/quotes/new")}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Quote
-        </Button>
+        {canCreateQuote && (
+          <Button onClick={() => router.push("/quotes/new")}>
+            <Plus className="mr-2 h-4 w-4" />
+            New Quote
+          </Button>
+        )}
       </PageHeader>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

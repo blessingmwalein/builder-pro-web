@@ -67,7 +67,7 @@ export function StepAccountType({ data, onChange, onNext }: StepProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold">How will you be using BuilderPro?</h2>
+        <h2 className="text-xl font-semibold">How will you be using ownit2buildit?</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Choose the account type that best describes you. You can change this later.
         </p>

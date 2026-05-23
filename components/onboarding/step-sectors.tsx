@@ -93,7 +93,7 @@ export function StepSectors({ data, onChange, onNext, onBack, isLoading, error, 
       <div>
         <h2 className="text-xl font-semibold">Your sectors & project types</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Select the sectors and project types you work in. This helps us tailor BuilderPro for you.
+          Select the sectors and project types you work in. This helps us tailor ownit2buildit for you.
         </p>
       </div>
 

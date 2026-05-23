@@ -4,10 +4,10 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Package, Plus, AlertTriangle, ShoppingCart, UserPlus, Loader2,
-  Filter, X, FileText, Truck, ClipboardList, Tag, Trash2, Pencil,
+  Filter, X, FileText, Truck, ClipboardList, Tag, Trash2, Pencil, Search, ChevronDown, Check,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
 import {
   fetchMaterials, fetchLowStock, fetchSuppliers, createMaterial,
   updateMaterial, deleteMaterial,
@@ -30,8 +30,128 @@ import { SupplierFormModal } from "@/components/materials/supplier-form-modal";
 import { BulkPurchaseModal } from "@/components/materials/bulk-purchase-modal";
 import { MaterialViewDrawer } from "@/components/materials/material-view-drawer";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import type { Material } from "@/types";
 import api from "@/lib/api";
+import { searchElectrosalesProducts, preloadElectrosalesProducts, type ElectrosalesProduct } from "@/lib/electrosales";
+
+// ─── Electrosales ProductSearchPopover ───────────────────────────────────────
+
+function ElectrosalesPopover({
+  chosen,
+  onSelect,
+  formatCurrency,
+}: {
+  chosen?: ElectrosalesProduct | null;
+  onSelect: (p: ElectrosalesProduct) => void;
+  formatCurrency: (n: number) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ElectrosalesProduct[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSearch(q: string) {
+    setQuery(q);
+    if (q.trim().length < 2) { setResults([]); return; }
+    setLoading(true);
+    try {
+      setResults(await searchElectrosalesProducts(q, 10));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+      >
+        <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className={cn("flex-1 truncate text-left text-sm", chosen ? "" : "text-muted-foreground")}>
+          {chosen?.name ?? "Search Electrosales catalog…"}
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+      </PopoverTrigger>
+      <PopoverContent className="w-[480px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Product name, SKU or keyword…"
+            value={query}
+            onValueChange={(q) => void handleSearch(q)}
+          />
+          <CommandList className="max-h-80">
+            {loading && (
+              <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Searching…
+              </div>
+            )}
+            {!loading && query.length >= 2 && results.length === 0 && (
+              <CommandEmpty>No products found.</CommandEmpty>
+            )}
+            {!loading && query.length < 2 && (
+              <div className="px-3 py-3 text-xs text-muted-foreground">
+                Type at least 2 characters to search 11,000+ products
+              </div>
+            )}
+            <CommandGroup>
+              {results.map((product) => (
+                <CommandItem
+                  key={product.id}
+                  onSelect={() => { onSelect(product); setOpen(false); setQuery(""); setResults([]); }}
+                  className="flex items-start gap-3 py-2.5"
+                >
+                  {/* Thumbnail */}
+                  <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border bg-muted">
+                    {product.imageUrl ? (
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="h-full w-full object-contain"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  {/* Details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium leading-tight">{product.name}</span>
+                      <span className="shrink-0 text-xs font-bold text-primary">
+                        {formatCurrency(product.priceExclVat || product.price)} excl.
+                      </span>
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      {product.sku && <span>SKU: {product.sku}</span>}
+                      {product.uom && <span>{product.uom}</span>}
+                      <span className={cn(
+                        "font-medium",
+                        (product.availability || "").toLowerCase().includes("in") ? "text-green-600" : "text-amber-500",
+                      )}>
+                        {product.availability}
+                      </span>
+                      <span>{product.supplierName}</span>
+                    </div>
+                    {product.breadcrumbs.length > 0 && (
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground/70">
+                        {product.breadcrumbs.join(" › ")}
+                      </span>
+                    )}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function MaterialsPage() {
   const dispatch = useAppDispatch();
@@ -41,6 +161,8 @@ export default function MaterialsPage() {
   const { items: projects } = useAppSelector((s) => s.projects);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const canManageInventory = useHasAnyPermission(["materials.*", "materials.manage_inventory"]);
+  const canLogUsage = useHasAnyPermission(["materials.*", "materials.log"]);
   const [showAdd, setShowAdd] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -270,6 +392,7 @@ export default function MaterialsPage() {
   const [editReason, setEditReason] = useState("");
   const [editMaterial, setEditMaterial] = useState<Material | null>(null);
   const [creatingMaterial, setCreatingMaterial] = useState(false);
+  const [esProduct, setEsProduct] = useState<ElectrosalesProduct | null>(null);
 
   // ─── Delete confirmation state ────────────────────────────────────────────────
   const [materialToDelete, setMaterialToDelete] = useState<Material | null>(null);
@@ -334,6 +457,13 @@ export default function MaterialsPage() {
     setNewName(""); setNewUnit(""); setNewCost(""); setNewSku("");
     setNewCategoryId(""); setNewSupplierId(""); setNewReorderAt("");
     setNewDescription(""); setNewStock("0"); setEditReason("");
+    setEsProduct(null);
+  }
+
+  function openAddMaterial() {
+    setShowAdd(true);
+    // Pre-warm browser cache so search is instant
+    void preloadElectrosalesProducts();
   }
 
   async function handleAddMaterial() {
@@ -535,18 +665,22 @@ export default function MaterialsPage() {
       header: "",
       cell: (m) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button
-            variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-            onClick={() => openEditMaterial(m)}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-            onClick={() => setMaterialToDelete(m)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canManageInventory && (
+            <>
+              <Button
+                variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                onClick={() => openEditMaterial(m)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                onClick={() => setMaterialToDelete(m)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
         </div>
       ),
     },
@@ -555,18 +689,24 @@ export default function MaterialsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Materials & Inventory" description="Track materials, stock levels, and usage.">
-        <Button variant="outline" onClick={() => setShowLog(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Log Usage
-        </Button>
-        <Button variant="outline" onClick={() => setShowBulkPurchase(true)}>
-          <ShoppingCart className="mr-2 h-4 w-4" /> Record Purchase
-        </Button>
-        <Button variant="outline" onClick={() => setShowCategoryManager(true)}>
-          <Tag className="mr-2 h-4 w-4" /> Categories
-        </Button>
-        <Button onClick={() => setShowAdd(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Add Material
-        </Button>
+        {canLogUsage && (
+          <Button variant="outline" onClick={() => setShowLog(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Log Usage
+          </Button>
+        )}
+        {canManageInventory && (
+          <>
+            <Button variant="outline" onClick={() => setShowBulkPurchase(true)}>
+              <ShoppingCart className="mr-2 h-4 w-4" /> Record Purchase
+            </Button>
+            <Button variant="outline" onClick={() => setShowCategoryManager(true)}>
+              <Tag className="mr-2 h-4 w-4" /> Categories
+            </Button>
+            <Button onClick={openAddMaterial}>
+              <Plus className="mr-2 h-4 w-4" /> Add Material
+            </Button>
+          </>
+        )}
       </PageHeader>
 
       {lowStock.length > 0 && (
@@ -648,7 +788,7 @@ export default function MaterialsPage() {
             </div>
           </div>
           {items.length === 0 && !isLoading ? (
-            <EmptyState icon={Package} title="No materials" description="Add your first material to start tracking inventory." actionLabel="Add Material" onAction={() => setShowAdd(true)} />
+            <EmptyState icon={Package} title="No materials" description="Add your first material to start tracking inventory." actionLabel={canManageInventory ? "Add Material" : undefined} onAction={canManageInventory ? openAddMaterial : undefined} />
           ) : (
             <DataTable
               columns={columns} data={items} isLoading={isLoading}
@@ -1067,9 +1207,51 @@ export default function MaterialsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
+            {/* Name + Electrosales search */}
             <div className="space-y-2 sm:col-span-2">
               <Label>Name *</Label>
-              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Cement (50kg bag)" />
+              <div className="flex gap-2">
+                <Input
+                  className="flex-1"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Cement (50kg bag)"
+                />
+                <div className="w-64 shrink-0">
+                  <ElectrosalesPopover
+                    chosen={esProduct}
+                    onSelect={(product) => {
+                      setEsProduct(product);
+                      setNewName(product.name);
+                      setNewCost(String(product.priceExclVat || product.price));
+                      setNewSku(product.sku || "");
+                      setNewDescription(product.description || "");
+                      if (product.uom) setNewUnit(product.uom.toLowerCase());
+                      const matched = suppliers.find(
+                        (s) =>
+                          s.name.toLowerCase().includes("electrosales") ||
+                          s.name.toLowerCase().includes((product.supplierName || "").toLowerCase()) ||
+                          (product.supplierName || "").toLowerCase().includes(s.name.toLowerCase()),
+                      );
+                      if (matched) setNewSupplierId(matched.id);
+                    }}
+                    formatCurrency={formatCurrency}
+                  />
+                </div>
+              </div>
+              {esProduct && (
+                <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs">
+                  <Check className="h-3 w-3 text-primary shrink-0" />
+                  <span className="text-primary font-medium">Electrosales: {esProduct.name}</span>
+                  <button
+                    type="button"
+                    className="ml-auto text-muted-foreground hover:text-foreground"
+                    onClick={() => setEsProduct(null)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Category</Label>
@@ -1354,8 +1536,8 @@ export default function MaterialsPage() {
         open={Boolean(viewMaterialId)}
         onOpenChange={(open) => { if (!open) setViewMaterialId(null); }}
         material={selectedViewMaterial}
-        onEdit={(m) => { setViewMaterialId(null); openEditMaterial(m); }}
-        onDelete={(m) => handleDeleteMaterial(m)}
+        onEdit={canManageInventory ? (m) => { setViewMaterialId(null); openEditMaterial(m); } : undefined}
+        onDelete={canManageInventory ? (m) => handleDeleteMaterial(m) : undefined}
       />
     </div>
   );

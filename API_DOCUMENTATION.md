@@ -1,4 +1,4 @@
-# BuilderPro API — Full Documentation
+# ownit2buildit API — Full Documentation
 > Base URL: `http://localhost:3005/api/v1`  
 > All tenant-scoped endpoints require `x-tenant-slug` header OR a valid Bearer token (tenant is resolved from JWT if header is omitted).
 
@@ -2137,4 +2137,4 @@ GET /platform-admin/billing/payments?page=1&limit=20
 
 ---
 
-*Generated from BuilderPro backend source — `src/` + Postman collection.*
+*Generated from ownit2buildit backend source — `src/` + Postman collection.*

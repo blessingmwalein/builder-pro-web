@@ -1224,15 +1224,26 @@ export default function SettingsPage() {
                             })}
                         </SelectContent>
                       </Select>
-                      <Input
-                        placeholder="Role code (optional)"
-                        value={task.roleCode}
-                        onChange={(e) => {
+                      <Select
+                        value={task.roleCode || "__none__"}
+                        onValueChange={(v) => {
                           const updated = [...tplForm.tasks];
-                          updated[i] = { ...updated[i], roleCode: e.target.value };
+                          updated[i] = { ...updated[i], roleCode: v !== "__none__" ? v : "" };
                           setTplForm({ ...tplForm, tasks: updated });
                         }}
-                      />
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Assigned role (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__" className="text-xs text-muted-foreground">No role</SelectItem>
+                          {(company?.stakeholders ?? []).map((s) => (
+                            <SelectItem key={s.id} value={s.type} className="text-xs">
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Select
                         value={task.priority}
                         onValueChange={(v) => v && (() => { const u = [...tplForm.tasks]; u[i] = { ...u[i], priority: v }; setTplForm({ ...tplForm, tasks: u }); })()}
@@ -1308,16 +1319,26 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 {tplForm.roles.map((role, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <Input
-                      className="flex-1"
-                      placeholder="Role code (e.g. SITE_ENGINEER)"
-                      value={role.roleCode}
-                      onChange={(e) => {
+                    <Select
+                      value={role.roleCode || "__none__"}
+                      onValueChange={(v) => {
                         const updated = [...tplForm.roles];
-                        updated[i] = { ...updated[i], roleCode: e.target.value };
+                        updated[i] = { ...updated[i], roleCode: v !== "__none__" ? v : "" };
                         setTplForm({ ...tplForm, roles: updated });
                       }}
-                    />
+                    >
+                      <SelectTrigger className="flex-1 text-xs">
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__" className="text-xs text-muted-foreground">Select role…</SelectItem>
+                        {(company?.stakeholders ?? []).map((s) => (
+                          <SelectItem key={s.id} value={s.type} className="text-xs">
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <div className="flex items-center gap-2">
                       <Switch
                         checked={role.isRequired}

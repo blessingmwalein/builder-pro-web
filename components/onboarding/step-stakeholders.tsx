@@ -69,7 +69,7 @@ export function StepStakeholders({ data, onChange, onNext, onBack, isLoading, er
       <div>
         <h2 className="text-xl font-semibold">Who works with you?</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Select the roles you work with. BuilderPro will auto-create these roles with the right permissions.
+          Select the roles you work with. ownit2buildit will auto-create these roles with the right permissions.
         </p>
       </div>
 

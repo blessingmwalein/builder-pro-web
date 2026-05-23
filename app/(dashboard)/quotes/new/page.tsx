@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Plus, Trash2, Loader2, ChevronDown, Check, Search } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Loader2, ChevronDown, Check, Search, Package } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
 import { createQuote } from "@/store/slices/quotesSlice";
 import { fetchClients } from "@/store/slices/crmSlice";
@@ -213,30 +213,48 @@ function ProductSearchPopover({
                 <CommandItem
                   key={product.id}
                   onSelect={() => { onSelect(product); setOpen(false); }}
-                  className="flex-col items-start gap-1 py-2"
+                  className="flex items-start gap-3 py-2"
                 >
-                  <div className="flex w-full items-start justify-between gap-2">
-                    <span className="font-medium leading-tight">{product.name}</span>
-                    <span className="shrink-0 text-xs font-semibold text-primary">
-                      {formatCurrency(product.price)}
-                    </span>
+                  {/* Thumbnail */}
+                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border bg-muted">
+                    {product.imageUrl ? (
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="h-full w-full object-contain"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
                   </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                    {product.sku && <span>SKU: {product.sku}</span>}
-                    <span>excl. VAT: {formatCurrency(product.priceExclVat)}</span>
-                    <span className={cn(
-                      "font-medium",
-                      product.availability === "In Stock" ? "text-green-600" : "text-amber-500"
-                    )}>
-                      {product.availability}
-                    </span>
-                    <span>{product.supplierName}</span>
+                  {/* Details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex w-full items-start justify-between gap-2">
+                      <span className="font-medium leading-tight">{product.name}</span>
+                      <span className="shrink-0 text-xs font-semibold text-primary">
+                        {formatCurrency(product.price)}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
+                      {product.sku && <span>SKU: {product.sku}</span>}
+                      <span>excl. VAT: {formatCurrency(product.priceExclVat)}</span>
+                      <span className={cn(
+                        "font-medium",
+                        product.availability === "In Stock" ? "text-green-600" : "text-amber-500"
+                      )}>
+                        {product.availability}
+                      </span>
+                      <span>{product.supplierName}</span>
+                    </div>
+                    {product.breadcrumbs.length > 0 && (
+                      <span className="text-[11px] text-muted-foreground/70">
+                        {product.breadcrumbs.join(" › ")}
+                      </span>
+                    )}
                   </div>
-                  {product.breadcrumbs.length > 0 && (
-                    <span className="text-[11px] text-muted-foreground/70">
-                      {product.breadcrumbs.join(" › ")}
-                    </span>
-                  )}
                 </CommandItem>
               ))}
             </CommandGroup>
