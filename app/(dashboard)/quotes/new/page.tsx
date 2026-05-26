@@ -6,6 +6,8 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Plus, Trash2, Loader2, ChevronDown, Check, Search, Package } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { createQuote } from "@/store/slices/quotesSlice";
 import { fetchClients } from "@/store/slices/crmSlice";
 import { fetchProjects } from "@/store/slices/projectsSlice";
@@ -582,6 +584,7 @@ function NewQuoteContent() {
 }
 
 export default function NewQuotePage() {
+  useRequirePermission(FEATURE_PERMS.quotesCreate);
   return (
     <Suspense fallback={null}>
       <NewQuoteContent />

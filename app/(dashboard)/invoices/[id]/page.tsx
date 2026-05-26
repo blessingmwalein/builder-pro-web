@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Send, FileDown, DollarSign, Ban } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
+import { Can } from "@/components/shared/can";
 import { fetchInvoice, sendInvoice, recordPayment, voidInvoice } from "@/store/slices/invoicesSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -12,7 +15,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -67,6 +71,7 @@ function normalizeInvoice(input: any) {
 }
 
 export default function InvoiceDetailPage() {
+  useRequirePermission(FEATURE_PERMS.invoices);
   const router = useRouter();
   const params = useParams();
   const dispatch = useAppDispatch();
@@ -78,6 +83,8 @@ export default function InvoiceDetailPage() {
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState<PaymentMethod>("BANK_TRANSFER");
   const [pendingAction, setPendingAction] = useState<"send" | "payment" | "void" | null>(null);
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [sendEmailToClient, setSendEmailToClient] = useState(true);
 
   useEffect(() => {
     if (invoiceId) dispatch(fetchInvoice(invoiceId));
@@ -115,9 +122,10 @@ export default function InvoiceDetailPage() {
   async function handleSendInvoice() {
     setPendingAction("send");
     try {
-      await dispatch(sendInvoice(view.id)).unwrap();
+      await dispatch(sendInvoice({ id: view.id, sendEmail: sendEmailToClient })).unwrap();
       await refreshInvoice();
-      toast.success("Invoice sent to client");
+      setSendDialogOpen(false);
+      toast.success(sendEmailToClient ? "Invoice sent to client" : "Invoice marked as sent");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to send invoice");
     } finally {
@@ -158,19 +166,25 @@ export default function InvoiceDetailPage() {
 
       <div className="flex flex-wrap gap-2">
         {view.status === "DRAFT" && (
-          <Button size="sm" onClick={handleSendInvoice} disabled={isBusy}>
-            <Send className="mr-2 h-3.5 w-3.5" /> {pendingAction === "send" ? "Sending..." : "Send to Client"}
-          </Button>
+          <Can anyOf={FEATURE_PERMS.invoicesSend}>
+            <Button size="sm" onClick={() => { setSendEmailToClient(true); setSendDialogOpen(true); }} disabled={isBusy}>
+              <Send className="mr-2 h-3.5 w-3.5" /> {pendingAction === "send" ? "Sending..." : "Send to Client"}
+            </Button>
+          </Can>
         )}
         {["SENT", "PARTIALLY_PAID", "OVERDUE"].includes(view.status) && (
-          <Button size="sm" onClick={() => { setPayAmount(String(view.balanceDue)); setShowPayment(true); }} disabled={isBusy}>
-            <DollarSign className="mr-2 h-3.5 w-3.5" /> Record Payment
-          </Button>
+          <Can anyOf={FEATURE_PERMS.invoicesMarkPaid}>
+            <Button size="sm" onClick={() => { setPayAmount(String(view.balanceDue)); setShowPayment(true); }} disabled={isBusy}>
+              <DollarSign className="mr-2 h-3.5 w-3.5" /> Record Payment
+            </Button>
+          </Can>
         )}
         {view.status !== "VOID" && view.status !== "PAID" && (
-          <Button size="sm" variant="outline" onClick={handleVoidInvoice} disabled={isBusy}>
-            <Ban className="mr-2 h-3.5 w-3.5" /> {pendingAction === "void" ? "Voiding..." : "Void"}
-          </Button>
+          <Can anyOf={FEATURE_PERMS.invoicesCreate}>
+            <Button size="sm" variant="outline" onClick={handleVoidInvoice} disabled={isBusy}>
+              <Ban className="mr-2 h-3.5 w-3.5" /> {pendingAction === "void" ? "Voiding..." : "Void"}
+            </Button>
+          </Can>
         )}
         <Button size="sm" variant="outline" onClick={downloadPdf} disabled={isBusy}>
           <FileDown className="mr-2 h-3.5 w-3.5" /> Download PDF
@@ -264,6 +278,43 @@ export default function InvoiceDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Send invoice dialog */}
+      <Dialog open={sendDialogOpen} onOpenChange={(o) => { if (!isBusy) setSendDialogOpen(o); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Invoice</DialogTitle>
+            <DialogDescription>
+              Mark this invoice as sent. Optionally email it to the client now.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-start gap-3 rounded-md border bg-muted/30 p-3">
+            <Checkbox
+              id="send-email-invoice"
+              checked={sendEmailToClient}
+              onCheckedChange={(v) => setSendEmailToClient(v === true)}
+            />
+            <div className="grid gap-1 leading-tight">
+              <label htmlFor="send-email-invoice" className="text-sm font-medium cursor-pointer">
+                Send email to client
+              </label>
+              <p className="text-xs text-muted-foreground">
+                {view.client?.email
+                  ? <>An email with the invoice details will be sent to <span className="font-medium">{view.client.email}</span>.</>
+                  : "Client has no email on file — the invoice will only be marked as sent."}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSendDialogOpen(false)} disabled={isBusy}>
+              Cancel
+            </Button>
+            <Button onClick={handleSendInvoice} disabled={isBusy}>
+              {pendingAction === "send" ? "Sending..." : sendEmailToClient ? "Send & Email" : "Mark as Sent"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Record payment dialog */}
       <Dialog open={showPayment} onOpenChange={setShowPayment}>

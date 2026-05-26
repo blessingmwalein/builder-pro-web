@@ -37,6 +37,9 @@ import {
 } from "recharts";
 
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
+import { Can } from "@/components/shared/can";
 import api from "@/lib/api";
 import {
   fetchProjectDashboard,
@@ -460,6 +463,7 @@ function normalizeDashboard(raw: unknown, fallbackMembers: Array<{
 }
 
 export default function ProjectDetailPage() {
+  useRequirePermission(FEATURE_PERMS.projects);
   const router = useRouter();
   const params = useParams();
   const dispatch = useAppDispatch();
@@ -898,14 +902,16 @@ export default function ProjectDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         {view.project.status !== "COMPLETED" && view.project.status !== "ARCHIVED" && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
-            onClick={() => setCloseProjectOpen(true)}
-          >
-            <CheckCircle2 className="mr-2 h-4 w-4" /> Close Project
-          </Button>
+          <Can anyOf={FEATURE_PERMS.projectsManage}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+              onClick={() => setCloseProjectOpen(true)}
+            >
+              <CheckCircle2 className="mr-2 h-4 w-4" /> Close Project
+            </Button>
+          </Can>
         )}
         <StatusBadge status={view.project.status} />
       </PageHeader>
@@ -937,13 +943,27 @@ export default function ProjectDetailPage() {
         <TabsList className="flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="timeline">Timeline ({stages.length})</TabsTrigger>
-          <TabsTrigger value="tasks">Tasks ({view.tasks.total})</TabsTrigger>
-          <TabsTrigger value="budget">Budget</TabsTrigger>
-          <TabsTrigger value="financials">Financials</TabsTrigger>
-          <TabsTrigger value="team">Team ({view.team.membersCount})</TabsTrigger>
-          <TabsTrigger value="time">Time Tracking</TabsTrigger>
-          <TabsTrigger value="change-requests">Changes ({changeRequests.length})</TabsTrigger>
-          <TabsTrigger value="analytics" onClick={() => void loadAnalytics()}>Analytics</TabsTrigger>
+          <Can anyOf={FEATURE_PERMS.tasks}>
+            <TabsTrigger value="tasks">Tasks ({view.tasks.total})</TabsTrigger>
+          </Can>
+          <Can anyOf={FEATURE_PERMS.financials}>
+            <TabsTrigger value="budget">Budget</TabsTrigger>
+          </Can>
+          <Can anyOf={FEATURE_PERMS.financials}>
+            <TabsTrigger value="financials">Financials</TabsTrigger>
+          </Can>
+          <Can anyOf={FEATURE_PERMS.projectsManage}>
+            <TabsTrigger value="team">Team ({view.team.membersCount})</TabsTrigger>
+          </Can>
+          <Can anyOf={FEATURE_PERMS.timesheets}>
+            <TabsTrigger value="time">Time Tracking</TabsTrigger>
+          </Can>
+          <Can anyOf={FEATURE_PERMS.quotes}>
+            <TabsTrigger value="change-requests">Changes ({changeRequests.length})</TabsTrigger>
+          </Can>
+          <Can anyOf={FEATURE_PERMS.reports}>
+            <TabsTrigger value="analytics" onClick={() => void loadAnalytics()}>Analytics</TabsTrigger>
+          </Can>
         </TabsList>
 
         <TabsContent value="overview" className="mt-4 space-y-6">
@@ -1013,6 +1033,7 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="tasks" className="mt-4 space-y-4">
+          <Can anyOf={FEATURE_PERMS.tasks}>
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Task Timeline</CardTitle>
@@ -1106,9 +1127,11 @@ export default function ProjectDetailPage() {
               </div>
             </CardContent>
           </Card>
+          </Can>
         </TabsContent>
 
         <TabsContent value="budget" className="mt-4">
+          <Can anyOf={FEATURE_PERMS.financials}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Budget Breakdown</CardTitle>
@@ -1126,9 +1149,11 @@ export default function ProjectDetailPage() {
               <BudgetBreakdownLines projectId={projectId} />
             </CardContent>
           </Card>
+          </Can>
         </TabsContent>
 
         <TabsContent value="financials" className="mt-4 space-y-4">
+          <Can anyOf={FEATURE_PERMS.financials}>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => router.push(`/quotes/new?projectId=${projectId}`)}><Plus className="mr-2 h-4 w-4" /> Create Quote</Button>
             <Button variant="outline" onClick={() => router.push(`/quotes?projectId=${projectId}`)}>View Quotes</Button>
@@ -1288,9 +1313,11 @@ export default function ProjectDetailPage() {
               )}
             </CardContent>
           </Card>
+          </Can>
         </TabsContent>
 
         <TabsContent value="team" className="mt-4">
+          <Can anyOf={FEATURE_PERMS.projectsManage}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Project Team</CardTitle>
@@ -1339,9 +1366,11 @@ export default function ProjectDetailPage() {
               </div>
             </CardContent>
           </Card>
+          </Can>
         </TabsContent>
 
         <TabsContent value="time" className="mt-4 space-y-4">
+          <Can anyOf={FEATURE_PERMS.timesheets}>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => setClockInModalOpen(true)}>
               <Timer className="mr-2 h-4 w-4" /> Clock In
@@ -1402,6 +1431,7 @@ export default function ProjectDetailPage() {
               )}
             </CardContent>
           </Card>
+          </Can>
         </TabsContent>
 
         {/* ── Timeline Tab ── */}
@@ -1643,6 +1673,7 @@ export default function ProjectDetailPage() {
 
         {/* ── Analytics Tab ── */}
         <TabsContent value="analytics" className="mt-4 space-y-6">
+          <Can anyOf={FEATURE_PERMS.reports}>
           {analyticsLoading ? (
             <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48" />)}</div>
           ) : !analyticsData ? (
@@ -1752,10 +1783,12 @@ export default function ProjectDetailPage() {
               )}
             </>
           )}
+          </Can>
         </TabsContent>
 
         {/* ── Change Requests Tab ── */}
         <TabsContent value="change-requests" className="mt-4 space-y-4">
+          <Can anyOf={FEATURE_PERMS.quotes}>
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setCreateCrOpen(true)}>
               <Plus className="mr-1 h-4 w-4" /> New Change Request
@@ -1822,6 +1855,7 @@ export default function ProjectDetailPage() {
               </CardContent>
             </Card>
           )}
+          </Can>
         </TabsContent>
       </Tabs>
 
@@ -2151,7 +2185,7 @@ export default function ProjectDetailPage() {
 
       {/* Document View Modal */}
       <Dialog open={!!viewDoc} onOpenChange={(open) => { if (!open) setViewDoc(null); }}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-5xl h-[95vh] flex flex-col">
           {(() => {
             const docUrl = viewDoc?.folder;
             return (
@@ -2177,7 +2211,7 @@ export default function ProjectDetailPage() {
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="flex-1 overflow-hidden rounded-lg border bg-muted/20 min-h-0" style={{ height: "60vh" }}>
+                <div className="flex-1 overflow-hidden rounded-lg border bg-muted/20 min-h-0">
                   {docUrl ? (
                     <iframe
                       src={docUrl}

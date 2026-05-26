@@ -5,6 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useAppDispatch } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { createClient } from "@/store/slices/crmSlice";
 import { createClientSchema, type CreateClientFormData } from "@/lib/validations";
 import { PageHeader } from "@/components/shared/page-header";
@@ -16,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function NewClientPage() {
+  useRequirePermission(FEATURE_PERMS.crmManage);
   const router = useRouter();
   const dispatch = useAppDispatch();
 

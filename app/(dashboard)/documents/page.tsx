@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { FileBox, Upload, Download, File, Image, FileText as FileIcon, Trash2 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
+import { Can } from "@/components/shared/can";
 import api from "@/lib/api";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -30,6 +33,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function DocumentsPage() {
+  useRequirePermission(FEATURE_PERMS.documents);
   const dispatch = useAppDispatch();
   const { items: projects } = useAppSelector((s) => s.projects);
   const [documents, setDocuments] = useState<Doc[]>([]);
@@ -64,9 +68,11 @@ export default function DocumentsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Documents & Photos" description="Central file storage for all project documentation.">
-        <Button>
-          <Upload className="mr-2 h-4 w-4" /> Upload
-        </Button>
+        <Can anyOf={FEATURE_PERMS.documentsUpload}>
+          <Button>
+            <Upload className="mr-2 h-4 w-4" /> Upload
+          </Button>
+        </Can>
       </PageHeader>
 
       {/* Filters */}

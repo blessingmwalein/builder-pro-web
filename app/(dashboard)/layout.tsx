@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import { useAuth } from "@/lib/hooks";
+import { useIdleLogout } from "@/lib/use-idle-logout";
 import Sidebar from "@/components/dashboard/sidebar";
 import Header from "@/components/dashboard/header";
 import OnboardingGuide, { useOnboardingGuide } from "@/components/dashboard/onboarding-guide";
@@ -15,6 +16,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { isAuthenticated, isLoading } = useAuth();
   const subscriptionExpired = useSelector((s: RootState) => s.auth.subscriptionExpired);
   const subscriptionErrorCode = useSelector((s: RootState) => s.auth.subscriptionErrorCode);
+  useIdleLogout();
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const onboarding = useOnboardingGuide();

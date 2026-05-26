@@ -1,41 +1,38 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3005/api/v1';
+/**
+ * Middleware auth strategy:
+ *
+ * We intentionally do NOT validate the JWT here or call /auth/me.
+ * Reasons:
+ *   - Calling the API on every navigation adds latency and can cause false
+ *     logouts when the token has just expired (even though the refresh token
+ *     is still valid and api.ts would have recovered transparently).
+ *   - Real token validation happens client-side: api.ts automatically retries
+ *     with a refreshed token on 401, and store/provider.tsx calls fetchMe()
+ *     on mount so the Redux state is always consistent.
+ *
+ * Middleware responsibility: gate completely unauthenticated users (no tokens
+ * at all) so they never see a flash of protected UI.
+ *
+ * Decision tree:
+ *   access-token cookie present     → pass through (JWT may be live or expired;
+ *                                     client handles the 401 → refresh cycle)
+ *   refresh-token cookie present    → pass through (client will refresh on first
+ *                                     API call that returns 401)
+ *   neither cookie present          → redirect to /login
+ */
 
-export async function middleware(request: NextRequest) {
-  const token = request.cookies.get('bp_access_token')?.value;
+export function middleware(request: NextRequest) {
+  const hasAccess  = Boolean(request.cookies.get('bp_access_token')?.value);
+  const hasRefresh = Boolean(request.cookies.get('bp_refresh_token')?.value);
 
-  if (!token) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  if (hasAccess || hasRefresh) {
+    return NextResponse.next();
   }
 
-  const tenantSlug = request.cookies.get('bp_tenant_slug')?.value ?? '';
-
-  try {
-    const res = await fetch(`${API_BASE}/auth/me`, {
-      headers: {
-        Authorization: `Bearer ${decodeURIComponent(token)}`,
-        ...(tenantSlug ? { 'x-tenant-slug': decodeURIComponent(tenantSlug) } : {}),
-      },
-    });
-
-    if (res.status === 402) {
-      const data = await res.json().catch(() => null);
-      const code = (data as { code?: string } | null)?.code ?? '';
-      const dest = new URL('/subscription-expired', request.url);
-      dest.searchParams.set('reason', code);
-      return NextResponse.redirect(dest);
-    }
-
-    if (res.status === 401) {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
-  } catch {
-    // Network/edge error — pass through; client-side will handle it
-  }
-
-  return NextResponse.next();
+  return NextResponse.redirect(new URL('/login', request.url));
 }
 
 export const config = {

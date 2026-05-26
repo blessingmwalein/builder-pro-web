@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Clock, Play, Square, Check, X, Timer, ClipboardCheck, CalendarClock } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
+import { Can } from "@/components/shared/can";
 import api from "@/lib/api";
 import {
   fetchTimeEntries,
@@ -81,6 +84,7 @@ function nowLocalInput(): string {
 }
 
 export default function TimeTrackingPage() {
+  useRequirePermission(FEATURE_PERMS.timesheets);
   const dispatch = useAppDispatch();
   const { entries, total, activeEntry, weeklySummary, isLoading } = useAppSelector((s) => s.timeTracking);
   const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
@@ -499,7 +503,9 @@ export default function TimeTrackingPage() {
         <TabsList>
           <TabsTrigger value="entries">Entries</TabsTrigger>
           <TabsTrigger value="manual">Manual Entry</TabsTrigger>
-          <TabsTrigger value="approvals">Approvals</TabsTrigger>
+          <Can anyOf={FEATURE_PERMS.timesheetsApprove}>
+            <TabsTrigger value="approvals">Approvals</TabsTrigger>
+          </Can>
         </TabsList>
 
         <TabsContent value="entries" className="space-y-4 pt-4">
@@ -674,6 +680,7 @@ export default function TimeTrackingPage() {
         </TabsContent>
 
         <TabsContent value="approvals" className="pt-4">
+          <Can anyOf={FEATURE_PERMS.timesheetsApprove}>
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Pending Approvals</CardTitle>
@@ -737,6 +744,7 @@ export default function TimeTrackingPage() {
               </div>
             </CardContent>
           </Card>
+          </Can>
         </TabsContent>
       </Tabs>
     </div>

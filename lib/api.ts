@@ -64,8 +64,12 @@ function getTenantSlug(): string | null {
 export function setTokens(access: string, refresh?: string) {
   localStorage.setItem("bp_access_token", access);
   if (refresh) localStorage.setItem("bp_refresh_token", refresh);
-  // Mirror in cookies so Next.js middleware can read them (localStorage is client-only)
-  document.cookie = `bp_access_token=${encodeURIComponent(access)}; path=/; SameSite=Strict; max-age=3600`;
+  // Mirror in cookies so Next.js middleware can read them (localStorage is client-only).
+  // max-age=604800 (7 days) — middleware only checks presence, not validity.
+  document.cookie = `bp_access_token=${encodeURIComponent(access)}; path=/; SameSite=Strict; max-age=604800`;
+  if (refresh) {
+    document.cookie = `bp_refresh_token=${encodeURIComponent(refresh)}; path=/; SameSite=Strict; max-age=604800`;
+  }
 }
 
 export function setTenantSlug(slug: string) {
@@ -79,6 +83,7 @@ export function clearAuth() {
   localStorage.removeItem("bp_refresh_token");
   localStorage.removeItem("bp_tenant_slug");
   document.cookie = "bp_access_token=; path=/; max-age=0; SameSite=Strict";
+  document.cookie = "bp_refresh_token=; path=/; max-age=0; SameSite=Strict";
   document.cookie = "bp_tenant_slug=; path=/; max-age=0; SameSite=Strict";
 }
 
@@ -222,7 +227,19 @@ export const api = {
     if (token) headers["Authorization"] = `Bearer ${token}`;
     if (slug) headers["x-tenant-slug"] = slug;
     const url = buildUrl(path);
-    const res = await fetch(url, { method: "POST", headers, body: formData });
+    let res = await fetch(url, { method: "POST", headers, body: formData });
+
+    if (res.status === 401) {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        headers["Authorization"] = `Bearer ${newToken}`;
+        res = await fetch(url, { method: "POST", headers, body: formData });
+      } else {
+        if (typeof window !== "undefined") window.location.href = "/login";
+        throw new ApiError(401, "Session expired");
+      }
+    }
+
     if (!res.ok) {
       const errData = await res.json().catch(() => null);
       throw new ApiError(res.status, extractErrorMessage(errData, res.statusText), errData);

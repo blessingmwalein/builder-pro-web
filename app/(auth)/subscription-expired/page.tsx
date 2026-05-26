@@ -13,8 +13,11 @@ import {
   ShieldOff,
   Building2,
 } from "lucide-react";
+import { useDispatch } from "react-redux";
 import api, { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/hooks";
+import { fetchMe } from "@/store/slices/authSlice";
+import type { AppDispatch } from "@/store";
 import type { AccountType, BillingCycle, Plan } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -102,6 +105,7 @@ function SubscriptionExpiredContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { tenant } = useAuth();
+  const dispatch = useDispatch<AppDispatch>();
 
   const reason = (searchParams.get("reason") ?? "") as SubscriptionErrorCode;
   const accountType = tenant?.accountType as AccountType | undefined;
@@ -271,7 +275,16 @@ function SubscriptionExpiredContent() {
         open={paymentOpen}
         onOpenChange={setPaymentOpen}
         plan={paymentPlan}
-        onSuccess={() => {
+        onSuccess={async () => {
+          // Re-fetch the auth/me profile so Redux clears subscriptionExpired
+          // before we navigate — otherwise the dashboard layout sees the stale
+          // flag and immediately redirects back here.
+          try {
+            await dispatch(fetchMe()).unwrap();
+          } catch {
+            // If fetchMe still fails (e.g. network), navigate anyway;
+            // the layout will handle whatever state comes back.
+          }
           router.replace("/dashboard");
         }}
       />

@@ -6,6 +6,8 @@ import {
   TrendingUp, Loader2, AlertTriangle, CheckCircle2, Timer,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { fetchProjects } from "@/store/slices/projectsSlice";
 import api from "@/lib/api";
 import { PageHeader } from "@/components/shared/page-header";
@@ -105,6 +107,7 @@ function exportCSV(filename: string, rows: unknown[]) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ReportsPage() {
+  useRequirePermission(FEATURE_PERMS.reports);
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
   const { items: projects } = useAppSelector((s) => s.projects);

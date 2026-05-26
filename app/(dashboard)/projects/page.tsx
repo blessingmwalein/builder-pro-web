@@ -11,6 +11,8 @@ import {
   DollarSign,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { fetchProjects } from "@/store/slices/projectsSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatsCard } from "@/components/shared/stats-card";
@@ -34,11 +36,12 @@ const STATUS_TABS: { label: string; value: ProjectStatus | "ALL" }[] = [
 ];
 
 export default function ProjectsPage() {
+  useRequirePermission(FEATURE_PERMS.projects);
   const router = useRouter();
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
   const { items: projects, total, isLoading } = useAppSelector((s) => s.projects);
-  const canCreateProject = useHasAnyPermission(["projects.*", "projects.create"]);
+  const canCreateProject = useHasAnyPermission([...FEATURE_PERMS.projectsCreate]);
 
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "ALL">("ALL");
@@ -71,7 +74,7 @@ export default function ProjectsPage() {
   const stats = useMemo(() => {
     const active = projects.filter((p) => p.status === "ACTIVE").length;
     const completed = projects.filter((p) => p.status === "COMPLETED").length;
-    const totalBudget = projects.reduce((sum, p) => sum + (p.baselineBudget || 0), 0);
+    const totalBudget = projects.reduce((sum, p) => sum + (Number(p.baselineBudget) || 0), 0);
     return { total, active, completed, totalBudget };
   }, [projects, total]);
 

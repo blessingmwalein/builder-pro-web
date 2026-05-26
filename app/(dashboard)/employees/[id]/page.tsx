@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Loader2, Pencil, ShieldBan, ShieldCheck, Trash2 } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
+import { Can } from "@/components/shared/can";
 import { deleteEmployee, fetchEmployee, toggleEmployeeStatus, updateEmployee } from "@/store/slices/employeesSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -29,6 +32,7 @@ type EditEmployeeForm = {
 };
 
 export default function EmployeeDetailPage() {
+  useRequirePermission(FEATURE_PERMS.employees);
   const router = useRouter();
   const params = useParams();
   const dispatch = useAppDispatch();
@@ -121,16 +125,18 @@ export default function EmployeeDetailPage() {
     <div className="space-y-6 max-w-2xl">
       <PageHeader title={employee.user ? `${employee.user.firstName} ${employee.user.lastName}` : employee.employeeCode}>
         <Button variant="outline" size="sm" onClick={() => router.push("/employees")}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
-        <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)}>
-          <Pencil className="mr-2 h-4 w-4" /> Edit
-        </Button>
-        <Button variant="outline" size="sm" onClick={onToggleStatus} disabled={isStatusUpdating}>
-          {isStatusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : employee.isActive ? <ShieldBan className="mr-2 h-4 w-4" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-          {employee.isActive ? "Deactivate" : "Activate"}
-        </Button>
-        <Button variant="destructive" size="sm" onClick={() => setIsDeleteOpen(true)}>
-          <Trash2 className="mr-2 h-4 w-4" /> Delete
-        </Button>
+        <Can anyOf={FEATURE_PERMS.employees}>
+          <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)}>
+            <Pencil className="mr-2 h-4 w-4" /> Edit
+          </Button>
+          <Button variant="outline" size="sm" onClick={onToggleStatus} disabled={isStatusUpdating}>
+            {isStatusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : employee.isActive ? <ShieldBan className="mr-2 h-4 w-4" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+            {employee.isActive ? "Deactivate" : "Activate"}
+          </Button>
+          <Button variant="destructive" size="sm" onClick={() => setIsDeleteOpen(true)}>
+            <Trash2 className="mr-2 h-4 w-4" /> Delete
+          </Button>
+        </Can>
       </PageHeader>
 
       <Card>

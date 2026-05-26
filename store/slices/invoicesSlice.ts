@@ -42,7 +42,10 @@ export const updateInvoice = createAsyncThunk(
 
 export const sendInvoice = createAsyncThunk(
   "invoices/send",
-  async (id: string) => api.put<Invoice>(`/invoices/${id}/send`)
+  async (arg: string | { id: string; sendEmail: boolean }) => {
+    const { id, sendEmail } = typeof arg === "string" ? { id: arg, sendEmail: true } : arg;
+    return api.put<Invoice>(`/invoices/${id}/send`, { sendEmail });
+  }
 );
 
 export const recordPayment = createAsyncThunk(

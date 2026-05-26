@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import type {
   CompanyDetails, CompanySettingsData, OnboardingSetupRequest, OnboardingOptions,
 } from "@/types";
@@ -114,6 +116,7 @@ const navLinks = [
 ];
 
 export default function SettingsPage() {
+  useRequirePermission(FEATURE_PERMS.settings);
   const router = useRouter();
   const { tenant } = useAuth();
 

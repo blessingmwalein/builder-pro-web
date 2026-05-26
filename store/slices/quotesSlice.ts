@@ -42,7 +42,10 @@ export const updateQuote = createAsyncThunk(
 
 export const sendQuote = createAsyncThunk(
   "quotes/send",
-  async (id: string) => api.put<Quote>(`/quotes/${id}/send`)
+  async (arg: string | { id: string; sendEmail: boolean }) => {
+    const { id, sendEmail } = typeof arg === "string" ? { id: arg, sendEmail: true } : arg;
+    return api.put<Quote>(`/quotes/${id}/send`, { sendEmail });
+  }
 );
 
 export const approveQuote = createAsyncThunk(

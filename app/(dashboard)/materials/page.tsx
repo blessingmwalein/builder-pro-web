@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import {
   fetchMaterials, fetchLowStock, fetchSuppliers, createMaterial,
   updateMaterial, deleteMaterial,
@@ -154,6 +156,7 @@ function ElectrosalesPopover({
 }
 
 export default function MaterialsPage() {
+  useRequirePermission(FEATURE_PERMS.materials);
   const dispatch = useAppDispatch();
   const searchParams = useSearchParams();
   const formatCurrency = useFormatCurrency();

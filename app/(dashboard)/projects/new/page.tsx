@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { fetchClients } from "@/store/slices/crmSlice";
 import { fetchEmployees } from "@/store/slices/employeesSlice";
 import api from "@/lib/api";
@@ -309,6 +311,7 @@ function PreviewPanel({
 // ─── component ───────────────────────────────────────────────────────────────
 
 export default function NewProjectPage() {
+  useRequirePermission(FEATURE_PERMS.projectsCreate);
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { clients } = useAppSelector((s) => s.crm);

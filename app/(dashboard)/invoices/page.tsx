@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Receipt, Plus } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { fetchInvoices } from "@/store/slices/invoicesSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -73,6 +75,7 @@ const statuses: { label: string; value: InvoiceStatus | "ALL" }[] = [
 ];
 
 export default function InvoicesPage() {
+  useRequirePermission(FEATURE_PERMS.invoices);
   const router = useRouter();
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();

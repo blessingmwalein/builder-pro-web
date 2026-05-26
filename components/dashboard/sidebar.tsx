@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHasAnyPermission } from "@/lib/hooks";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
@@ -42,46 +43,46 @@ const buildNavSections = (): { title: string; items: NavItem[] }[] => [
   {
     title: "Overview",
     items: [
-      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permissions: [] },
+      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permissions: [...FEATURE_PERMS.dashboard] },
     ],
   },
   {
     title: "Project Management",
     items: [
-      { label: "Projects", href: "/projects", icon: FolderKanban, permissions: ["projects.*", "projects.view"] },
-      { label: "Tasks", href: "/tasks", icon: CheckSquare, permissions: ["tasks.*", "tasks.view"] },
-      { label: "Time Tracking", href: "/time-tracking", icon: Clock, permissions: ["timesheets.*", "timesheets.view_own"] },
+      { label: "Projects", href: "/projects", icon: FolderKanban, permissions: [...FEATURE_PERMS.projects] },
+      { label: "Tasks", href: "/tasks", icon: CheckSquare, permissions: [...FEATURE_PERMS.tasks] },
+      { label: "Time Tracking", href: "/time-tracking", icon: Clock, permissions: [...FEATURE_PERMS.timesheets] },
     ],
   },
   {
     title: "Finance",
     items: [
-      { label: "Quotes", href: "/quotes", icon: FileText, permissions: ["quotes.*", "quotes.view"] },
-      { label: "Invoices", href: "/invoices", icon: Receipt, permissions: ["invoices.*", "invoices.view"] },
-      { label: "Financials", href: "/financials", icon: DollarSign, permissions: ["financials.*", "financials.view"] },
+      { label: "Quotes", href: "/quotes", icon: FileText, permissions: [...FEATURE_PERMS.quotes] },
+      { label: "Invoices", href: "/invoices", icon: Receipt, permissions: [...FEATURE_PERMS.invoices] },
+      { label: "Financials", href: "/financials", icon: DollarSign, permissions: [...FEATURE_PERMS.financials] },
     ],
   },
   {
     title: "Resources",
     items: [
-      { label: "Customer Relationship Management (CRM)", href: "/crm", icon: UserCircle, permissions: ["crm.*", "crm.view"] },
-      { label: "Employees", href: "/employees", icon: Users, permissions: ["employees.*", "employees.manage"] },
-      { label: "Materials", href: "/materials", icon: Package, permissions: ["materials.*", "materials.log"] },
-      { label: "Suppliers", href: "/materials?tab=suppliers", icon: Package, permissions: ["materials.*", "materials.log"] },
-      { label: "Equipment", href: "/equipment", icon: Wrench, permissions: ["materials.*", "materials.view"] },
+      { label: "Customer Relationship Management (CRM)", href: "/crm", icon: UserCircle, permissions: [...FEATURE_PERMS.crm] },
+      { label: "Employees", href: "/employees", icon: Users, permissions: [...FEATURE_PERMS.employees] },
+      { label: "Materials", href: "/materials", icon: Package, permissions: [...FEATURE_PERMS.materials] },
+      { label: "Suppliers", href: "/materials?tab=suppliers", icon: Package, permissions: [...FEATURE_PERMS.materials] },
+      { label: "Equipment", href: "/equipment", icon: Wrench, permissions: [...FEATURE_PERMS.materials] },
     ],
   },
   {
     title: "Communication",
     items: [
-      { label: "Messages", href: "/messaging", icon: MessageSquare, permissions: ["messaging.*", "messaging.view"] },
-      { label: "Documents", href: "/documents", icon: FileBox, permissions: ["documents.*", "documents.view"] },
+      { label: "Messages", href: "/messaging", icon: MessageSquare, permissions: [...FEATURE_PERMS.messaging] },
+      { label: "Documents", href: "/documents", icon: FileBox, permissions: [...FEATURE_PERMS.documents] },
     ],
   },
   {
     title: "Insights",
     items: [
-      { label: "Reports", href: "/reports", icon: BarChart3, permissions: ["reports.*", "reports.view"] },
+      { label: "Reports", href: "/reports", icon: BarChart3, permissions: [...FEATURE_PERMS.reports] },
     ],
   },
 ];
@@ -139,7 +140,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
       {/* Settings */}
       <div className="shrink-0 p-2">
         <NavLink
-          item={{ label: "Settings", href: "/settings", icon: Settings, permissions: ["settings.*"] }}
+          item={{ label: "Settings", href: "/settings", icon: Settings, permissions: [...FEATURE_PERMS.settings] }}
           collapsed={collapsed}
           isActive={pathname.startsWith("/settings")}
           onNavigate={onMobileClose}

@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import {
   fetchTasks,
   fetchMyQueue,
@@ -93,6 +95,7 @@ function normalizeAssignees(assignees: unknown) {
 }
 
 export default function TasksPage() {
+  useRequirePermission(FEATURE_PERMS.tasks);
   const dispatch = useAppDispatch();
   const { items: tasks, myQueue, isLoading } = useAppSelector((s) => s.tasks);
   const { items: projects } = useAppSelector((s) => s.projects);

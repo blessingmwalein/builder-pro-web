@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Hash, MessageSquare, User, UserPlus, X } from "lucide-react";
 import { useAppDispatch, useAppSelector, useAuth } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import {
   fetchConversations,
   fetchMessages,
@@ -27,6 +29,7 @@ import { CreateConversationDialog } from "@/components/messaging/CreateConversat
 import { MessageInput } from "@/components/messaging/MessageInput";
 
 export default function MessagingPage() {
+  useRequirePermission(FEATURE_PERMS.messaging);
   const dispatch = useAppDispatch();
   const { user } = useAuth();
   const { conversations, currentConversation, messages } = useAppSelector((s) => s.messaging);

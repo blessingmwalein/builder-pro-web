@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { fetchProjects } from "@/store/slices/projectsSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -62,6 +64,7 @@ const STATUS_CONFIG: Record<EquipmentStatus, { label: string; variant: string; i
 };
 
 export default function EquipmentPage() {
+  useRequirePermission(FEATURE_PERMS.materials);
   const dispatch = useAppDispatch();
   const { items: projects } = useAppSelector((s) => s.projects);
 

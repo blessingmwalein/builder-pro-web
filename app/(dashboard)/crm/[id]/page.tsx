@@ -5,6 +5,9 @@ import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Mail, Phone, MapPin, Pencil, Trash2, UserPlus, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
+import { Can } from "@/components/shared/can";
 import { fetchClient, deleteClient } from "@/store/slices/crmSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -51,6 +54,7 @@ interface PortalUser {
 }
 
 export default function ClientDetailPage() {
+  useRequirePermission(FEATURE_PERMS.crm);
   const router = useRouter();
   const params = useParams();
   const dispatch = useAppDispatch();
@@ -152,9 +156,12 @@ export default function ClientDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         <Badge variant="secondary">{client.clientType}</Badge>
-        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-          <Pencil className="mr-2 h-4 w-4" /> Edit
-        </Button>
+        <Can anyOf={FEATURE_PERMS.crmManage}>
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil className="mr-2 h-4 w-4" /> Edit
+          </Button>
+        </Can>
+        <Can anyOf={FEATURE_PERMS.crmManage}>
         <AlertDialog>
           <AlertDialogTrigger
             render={
@@ -179,6 +186,7 @@ export default function ClientDetailPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        </Can>
       </PageHeader>
 
       <EditClientModal

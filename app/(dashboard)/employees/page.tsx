@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Plus, Download } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { fetchEmployees } from "@/store/slices/employeesSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -16,6 +18,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { Employee } from "@/types";
 
 export default function EmployeesPage() {
+  useRequirePermission(FEATURE_PERMS.employees);
   const router = useRouter();
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();

@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Save, DollarSign, Receipt, FolderKanban, BarChart3, Trash2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
+import { Can } from "@/components/shared/can";
 import { toast } from "sonner";
 import {
   fetchFinancialDashboard,
@@ -95,6 +98,7 @@ const TRANSACTION_SOURCE_TYPES = [
 ] as const;
 
 export default function FinancialsPage() {
+  useRequirePermission(FEATURE_PERMS.financials);
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
 
@@ -394,13 +398,15 @@ export default function FinancialsPage() {
             </Select>
           </div>
 
-          <Button variant="outline" onClick={() => setCategoryDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" /> New Category
-          </Button>
+          <Can anyOf={FEATURE_PERMS.financialsManage}>
+            <Button variant="outline" onClick={() => setCategoryDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> New Category
+            </Button>
 
-          <Button onClick={() => setTxnDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" /> New Transaction
-          </Button>
+            <Button onClick={() => setTxnDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> New Transaction
+            </Button>
+          </Can>
         </CardContent>
       </Card>
 

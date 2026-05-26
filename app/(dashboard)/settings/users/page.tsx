@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  Check,
+  ChevronDown,
   UserPlus,
   Loader2,
   MoreHorizontal,
@@ -16,6 +18,8 @@ import {
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Button } from "@/components/ui/button";
@@ -38,6 +42,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,7 +58,56 @@ import type { User, Role, PaginatedResponse } from "@/types";
 
 type PendingUser = User & { isInvitePending?: boolean };
 
+function SearchableSelect({
+  value, onChange, options, placeholder = "Search...", emptyText = "No results",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string; sublabel?: string }[];
+  placeholder?: string;
+  emptyText?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((o) => o.value === value);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+        {selected ? (
+          <span className="truncate">{selected.label}</span>
+        ) : (
+          <span className="text-muted-foreground">{placeholder}</span>
+        )}
+        <ChevronDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-0" align="start">
+        <Command>
+          <CommandInput placeholder={placeholder} />
+          <CommandList>
+            <CommandEmpty>{emptyText}</CommandEmpty>
+            <CommandGroup>
+              {options.map((opt) => (
+                <CommandItem
+                  key={opt.value}
+                  value={opt.label}
+                  onSelect={() => { onChange(opt.value); setOpen(false); }}
+                >
+                  <Check className={cn("mr-2 h-3.5 w-3.5 shrink-0", opt.value === value ? "opacity-100" : "opacity-0")} />
+                  <div className="flex flex-col overflow-hidden">
+                    <span className="truncate text-sm">{opt.label}</span>
+                    {opt.sublabel && <span className="truncate text-xs text-muted-foreground">{opt.sublabel}</span>}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function UsersSettingsPage() {
+  useRequirePermission(FEATURE_PERMS.settingsUsers);
   const router = useRouter();
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<PendingUser[]>([]);
@@ -67,6 +125,13 @@ export default function UsersSettingsPage() {
     lastName: "",
     phone: "",
     roleId: "",
+  });
+  const [inviteAsEmployee, setInviteAsEmployee] = useState(false);
+  const [employeeForm, setEmployeeForm] = useState({
+    jobTitle: "",
+    employeeType: "FULL_TIME",
+    hourlyRate: "",
+    employeeCode: "",
   });
 
   // Edit form
@@ -106,13 +171,27 @@ export default function UsersSettingsPage() {
     currentUser?.roles?.some((r) => r.name?.toLowerCase() === "owner")
   );
 
+  function resetInviteForm() {
+    setInviteForm({ email: "", firstName: "", lastName: "", phone: "", roleId: "" });
+    setInviteAsEmployee(false);
+    setEmployeeForm({ jobTitle: "", employeeType: "FULL_TIME", hourlyRate: "", employeeCode: "" });
+  }
+
   async function handleInvite() {
     setInviting(true);
     try {
-      await api.post("/auth/invite", inviteForm);
+      const payload: Record<string, unknown> = { ...inviteForm };
+      if (inviteAsEmployee && employeeForm.jobTitle && employeeForm.hourlyRate) {
+        payload.createAsEmployee = true;
+        payload.employeeJobTitle = employeeForm.jobTitle;
+        payload.employeeType = employeeForm.employeeType;
+        payload.employeeHourlyRate = parseFloat(employeeForm.hourlyRate);
+        if (employeeForm.employeeCode) payload.employeeCode = employeeForm.employeeCode;
+      }
+      await api.post("/auth/invite", payload);
       toast.success(`Invite sent to ${inviteForm.email}`);
       setShowInvite(false);
-      setInviteForm({ email: "", firstName: "", lastName: "", phone: "", roleId: "" });
+      resetInviteForm();
       await loadUsers();
     } catch {
       toast.error("Failed to send invite");
@@ -344,7 +423,7 @@ export default function UsersSettingsPage() {
       />
 
       {/* Invite dialog */}
-      <Dialog open={showInvite} onOpenChange={setShowInvite}>
+      <Dialog open={showInvite} onOpenChange={(o) => { setShowInvite(o); if (!o) resetInviteForm(); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Invite Team Member</DialogTitle>
@@ -386,22 +465,80 @@ export default function UsersSettingsPage() {
             </div>
             <div className="space-y-2">
               <Label>Role *</Label>
-              <Select
+              <SearchableSelect
                 value={inviteForm.roleId}
-                onValueChange={(v: string | null) => setInviteForm({ ...inviteForm, roleId: v ?? "" })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roles.map((r) => (
-                    <SelectItem key={r.id} value={r.id}>
-                      {r.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(roleId) => {
+                  const role = roles.find((r) => r.id === roleId);
+                  setInviteForm({ ...inviteForm, roleId });
+                  // Mirror role name into employee job title
+                  if (role) setEmployeeForm((prev) => ({ ...prev, jobTitle: role.name }));
+                }}
+                options={roles.map((r) => ({ value: r.id, label: r.name, sublabel: r.description }))}
+                placeholder="Search roles..."
+                emptyText="No roles found"
+              />
             </div>
+
+            <Separator />
+
+            {/* Employee section */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Also add as Employee</p>
+                <p className="text-xs text-muted-foreground">Create an employee record and set their rates</p>
+              </div>
+              <Switch checked={inviteAsEmployee} onCheckedChange={setInviteAsEmployee} />
+            </div>
+
+            {inviteAsEmployee && (
+              <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Job Title *</Label>
+                    <Input
+                      placeholder="e.g. Foreman"
+                      value={employeeForm.jobTitle}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, jobTitle: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Employee Code</Label>
+                    <Input
+                      placeholder="EMP-001"
+                      value={employeeForm.employeeCode}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, employeeCode: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Employment Type *</Label>
+                    <Select
+                      value={employeeForm.employeeType}
+                      onValueChange={(v: string | null) => setEmployeeForm({ ...employeeForm, employeeType: v ?? "FULL_TIME" })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="FULL_TIME">Full Time</SelectItem>
+                        <SelectItem value="PART_TIME">Part Time</SelectItem>
+                        <SelectItem value="SUBCONTRACTOR">Subcontractor</SelectItem>
+                        <SelectItem value="CASUAL">Casual</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Hourly Rate (USD) *</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={employeeForm.hourlyRate}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, hourlyRate: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowInvite(false)}>
@@ -413,7 +550,8 @@ export default function UsersSettingsPage() {
                 inviting ||
                 !inviteForm.email ||
                 !inviteForm.firstName ||
-                !inviteForm.roleId
+                !inviteForm.roleId ||
+                (inviteAsEmployee && (!employeeForm.jobTitle || !employeeForm.hourlyRate))
               }
             >
               {inviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

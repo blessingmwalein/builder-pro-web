@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, Loader2, Crown, Zap } from "lucide-react";
 import api from "@/lib/api";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { PaymentModal } from "@/components/shared/payment-modal";
@@ -26,6 +28,7 @@ function formatLimit(value: number): string {
 }
 
 export default function SubscriptionSettingsPage() {
+  useRequirePermission(FEATURE_PERMS.settings);
   const router = useRouter();
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);

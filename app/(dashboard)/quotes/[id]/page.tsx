@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Send, Check, X, FileDown, RefreshCw } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
+import { Can } from "@/components/shared/can";
 import { fetchQuote, sendQuote, approveQuote, rejectQuote, convertQuote } from "@/store/slices/quotesSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -30,6 +33,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { downloadQuoteProformaPdf } from "@/lib/pdf";
 import { toast } from "sonner";
 
@@ -74,6 +79,7 @@ function normalizeQuote(input: any) {
 }
 
 export default function QuoteDetailPage() {
+  useRequirePermission(FEATURE_PERMS.quotes);
   const router = useRouter();
   const params = useParams();
   const dispatch = useAppDispatch();
@@ -85,6 +91,8 @@ export default function QuoteDetailPage() {
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectionNotes, setRejectionNotes] = useState("");
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [sendEmailToClient, setSendEmailToClient] = useState(true);
 
   useEffect(() => {
     if (quoteId) dispatch(fetchQuote(quoteId));
@@ -109,9 +117,10 @@ export default function QuoteDetailPage() {
   async function handleSendQuote() {
     setPendingAction("send");
     try {
-      await dispatch(sendQuote(view.id)).unwrap();
+      await dispatch(sendQuote({ id: view.id, sendEmail: sendEmailToClient })).unwrap();
       await refreshQuote();
-      toast.success("Quote sent to client");
+      setSendDialogOpen(false);
+      toast.success(sendEmailToClient ? "Quote sent to client" : "Quote marked as sent");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to send quote");
     } finally {
@@ -187,13 +196,15 @@ export default function QuoteDetailPage() {
       {/* Action buttons based on status */}
       <div className="flex gap-2">
         {view.status === "DRAFT" && (
-          <Button size="sm" onClick={handleSendQuote} disabled={isBusy}>
-            <Send className="mr-2 h-3.5 w-3.5" />
-            {pendingAction === "send" ? "Sending..." : "Send to Client"}
-          </Button>
+          <Can anyOf={FEATURE_PERMS.quotesSend}>
+            <Button size="sm" onClick={() => { setSendEmailToClient(true); setSendDialogOpen(true); }} disabled={isBusy}>
+              <Send className="mr-2 h-3.5 w-3.5" />
+              {pendingAction === "send" ? "Sending..." : "Send to Client"}
+            </Button>
+          </Can>
         )}
         {view.status === "SENT" && (
-          <>
+          <Can anyOf={FEATURE_PERMS.quotesApprove}>
             <Button size="sm" variant="default" onClick={() => setApproveDialogOpen(true)} disabled={isBusy}>
               <Check className="mr-2 h-3.5 w-3.5" />
               Approve
@@ -202,19 +213,57 @@ export default function QuoteDetailPage() {
               <X className="mr-2 h-3.5 w-3.5" />
               Reject
             </Button>
-          </>
+          </Can>
         )}
         {view.status === "APPROVED" && (
-          <Button size="sm" onClick={handleConvertQuote} disabled={isBusy}>
-            <RefreshCw className="mr-2 h-3.5 w-3.5" />
-            {pendingAction === "convert" ? "Converting..." : "Convert to Invoice"}
-          </Button>
+          <Can anyOf={FEATURE_PERMS.invoicesCreate}>
+            <Button size="sm" onClick={handleConvertQuote} disabled={isBusy}>
+              <RefreshCw className="mr-2 h-3.5 w-3.5" />
+              {pendingAction === "convert" ? "Converting..." : "Convert to Invoice"}
+            </Button>
+          </Can>
         )}
         <Button size="sm" variant="outline" onClick={downloadPdf} disabled={isBusy}>
           <FileDown className="mr-2 h-3.5 w-3.5" />
           Download PDF
         </Button>
       </div>
+
+      <Dialog open={sendDialogOpen} onOpenChange={(o) => { if (!isBusy) setSendDialogOpen(o); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Quote</DialogTitle>
+            <DialogDescription>
+              Mark this quote as sent. Optionally email it to the client now.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-start gap-3 rounded-md border bg-muted/30 p-3">
+            <Checkbox
+              id="send-email-quote"
+              checked={sendEmailToClient}
+              onCheckedChange={(v) => setSendEmailToClient(v === true)}
+            />
+            <div className="grid gap-1 leading-tight">
+              <label htmlFor="send-email-quote" className="text-sm font-medium cursor-pointer">
+                Send email to client
+              </label>
+              <p className="text-xs text-muted-foreground">
+                {view.client?.email
+                  ? <>An email with the quote details will be sent to <span className="font-medium">{view.client.email}</span>.</>
+                  : "Client has no email on file — the quote will only be marked as sent."}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSendDialogOpen(false)} disabled={isBusy}>
+              Cancel
+            </Button>
+            <Button onClick={handleSendQuote} disabled={isBusy}>
+              {pendingAction === "send" ? "Sending..." : sendEmailToClient ? "Send & Email" : "Mark as Sent"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
         <AlertDialogContent>

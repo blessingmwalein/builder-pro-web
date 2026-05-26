@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UserCircle, Plus } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency, useHasAnyPermission } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { fetchClients } from "@/store/slices/crmSlice";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -15,6 +17,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { Client } from "@/types";
 
 export default function CrmPage() {
+  useRequirePermission(FEATURE_PERMS.crm);
   const router = useRouter();
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();

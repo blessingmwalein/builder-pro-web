@@ -6,6 +6,8 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Plus, Trash2, Loader2, ChevronDown, Check, Search, Package } from "lucide-react";
 import { useAppDispatch, useAppSelector, useFormatCurrency } from "@/lib/hooks";
+import { useRequirePermission } from "@/lib/use-require-permission";
+import { FEATURE_PERMS } from "@/lib/permissions";
 import { createInvoice } from "@/store/slices/invoicesSlice";
 import { fetchQuotes } from "@/store/slices/quotesSlice";
 import { fetchClients } from "@/store/slices/crmSlice";
@@ -311,6 +313,7 @@ function QuoteSearchPopover({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function NewInvoicePage() {
+  useRequirePermission(FEATURE_PERMS.invoicesCreate);
   return (
     <Suspense fallback={<div className="flex justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
       <NewInvoiceContent />
