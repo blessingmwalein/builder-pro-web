@@ -637,6 +637,8 @@ export interface BudgetLine {
   actualAmount: number;
   variance: number;
   thresholdPct: number;
+  percentUsed?: number;
+  status?: "ON_TRACK" | "WARNING" | "OVER_BUDGET";
 }
 
 export interface BudgetCategory {
@@ -653,8 +655,41 @@ export interface FinancialTransaction {
   amount: number;
   occurredAt: string;
   reference: string | null;
+  sourceType: string;
+  vendor?: string | null;
+  notes?: string | null;
+  receiptUrl?: string | null;
   category?: BudgetCategory;
   createdAt: string;
+}
+
+export interface CategoryLedger {
+  category: BudgetCategory;
+  budget: {
+    plannedAmount: number;
+    actualAmount: number;
+    thresholdPct: number;
+  } | null;
+  transactions: FinancialTransaction[];
+  materialLogs: Array<{
+    id: string;
+    quantity: number;
+    unitCost: number;
+    totalCost: number;
+    notes: string | null;
+    usedAt: string;
+    material: { id: string; name: string; unit: string } | null;
+  }>;
+  timeEntries: Array<{
+    id: string;
+    regularHours: number;
+    overtimeHours: number;
+    labourCost: number;
+    clockInAt: string;
+    notes: string | null;
+    worker: { id: string; firstName: string; lastName: string } | null;
+  }>;
+  totals: { transactions: number; materialUsage: number; labour: number };
 }
 
 // ---- Employees ----

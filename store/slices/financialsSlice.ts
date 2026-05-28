@@ -6,6 +6,7 @@ import type {
   BudgetLine,
   BudgetCategory,
   FinancialTransaction,
+  CategoryLedger,
   PaginatedResponse,
 } from "@/types";
 
@@ -16,6 +17,8 @@ interface FinancialsState {
   categories: BudgetCategory[];
   transactions: FinancialTransaction[];
   transactionsTotal: number;
+  categoryLedger: CategoryLedger | null;
+  categoryLedgerLoading: boolean;
   isLoading: boolean;
 }
 
@@ -26,6 +29,8 @@ const initialState: FinancialsState = {
   categories: [],
   transactions: [],
   transactionsTotal: 0,
+  categoryLedger: null,
+  categoryLedgerLoading: false,
   isLoading: false,
 };
 
@@ -130,8 +135,16 @@ export const createTransaction = createAsyncThunk(
     occurredAt: string;
     reference?: string;
     sourceType?: string;
+    vendor?: string;
+    notes?: string;
   }) =>
     api.post<FinancialTransaction>("/financials/transactions", data)
+);
+
+export const fetchCategoryLedger = createAsyncThunk(
+  "financials/fetchCategoryLedger",
+  async ({ projectId, categoryId }: { projectId: string; categoryId: string }) =>
+    api.get<CategoryLedger>(`/financials/projects/${projectId}/budget/${categoryId}/ledger`)
 );
 
 const financialsSlice = createSlice({
@@ -159,7 +172,13 @@ const financialsSlice = createSlice({
       })
       .addCase(createTransaction.fulfilled, (state, { payload }) => {
         state.transactions.unshift(payload);
-      });
+      })
+      .addCase(fetchCategoryLedger.pending, (state) => { state.categoryLedgerLoading = true; })
+      .addCase(fetchCategoryLedger.fulfilled, (state, { payload }) => {
+        state.categoryLedger = payload;
+        state.categoryLedgerLoading = false;
+      })
+      .addCase(fetchCategoryLedger.rejected, (state) => { state.categoryLedgerLoading = false; });
   },
 });
 

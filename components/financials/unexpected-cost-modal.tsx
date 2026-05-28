@@ -52,6 +52,8 @@ export function UnexpectedCostModal({ open, onOpenChange, projectId, onSaved }: 
   const [description, setDescription] = useState<string>("");
   const [occurredAt, setOccurredAt] = useState<string>(TODAY);
   const [reference, setReference] = useState<string>("");
+  const [vendor, setVendor] = useState<string>("");
+  const [notes, setNotes] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -78,6 +80,8 @@ export function UnexpectedCostModal({ open, onOpenChange, projectId, onSaved }: 
       setAmount("");
       setDescription("");
       setReference("");
+      setVendor("");
+      setNotes("");
       setOccurredAt(TODAY());
       setCategoryId("");
     }
@@ -104,6 +108,8 @@ export function UnexpectedCostModal({ open, onOpenChange, projectId, onSaved }: 
           amount: numericAmount,
           occurredAt: occurredAt || new Date().toISOString().slice(0, 10),
           reference: reference.trim() || undefined,
+          vendor: vendor.trim() || undefined,
+          notes: notes.trim() || undefined,
           sourceType: "UNEXPECTED",
         }),
       ).unwrap();
@@ -186,6 +192,24 @@ export function UnexpectedCostModal({ open, onOpenChange, projectId, onSaved }: 
               placeholder="Receipt #, fuel-station slip, etc."
               value={reference}
               onChange={(e) => setReference(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Vendor / Supplier</Label>
+            <Input
+              placeholder="e.g. TotalEnergies, ABC Hardware"
+              value={vendor}
+              onChange={(e) => setVendor(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Notes</Label>
+            <Input
+              placeholder="Any additional context (optional)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
             />
           </div>
         </div>

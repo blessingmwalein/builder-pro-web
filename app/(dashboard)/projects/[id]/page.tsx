@@ -10,6 +10,7 @@ import {
   CheckSquare,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   Clock,
   DollarSign,
   AlertTriangle,
@@ -90,12 +91,13 @@ import {
 import { DatePickerField } from "@/components/shared/date-picker-field";
 import { BudgetEditModal } from "@/components/financials/budget-edit-modal";
 import { UnexpectedCostModal } from "@/components/financials/unexpected-cost-modal";
+import { BudgetCategoryLedgerModal } from "@/components/financials/budget-category-ledger-modal";
 import { CloseProjectModal } from "@/components/projects/close-project-modal";
 import { GanttChart } from "@/components/shared/gantt-chart";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { TaskSheet } from "@/components/tasks/task-sheet";
 import { searchAddresses, type AddressResult } from "@/lib/geocoding";
-import { fetchProjectBudget } from "@/store/slices/financialsSlice";
+import { fetchProjectBudget, fetchProjectTransactions } from "@/store/slices/financialsSlice";
 
 import type { Task, User as AppUser, PaginatedResponse, MaterialUsageLog } from "@/types";
 
@@ -952,6 +954,9 @@ export default function ProjectDetailPage() {
           <Can anyOf={FEATURE_PERMS.financials}>
             <TabsTrigger value="financials">Financials</TabsTrigger>
           </Can>
+          <Can anyOf={FEATURE_PERMS.financials}>
+            <TabsTrigger value="transactions">Transactions</TabsTrigger>
+          </Can>
           <Can anyOf={FEATURE_PERMS.projectsManage}>
             <TabsTrigger value="team">Team ({view.team.membersCount})</TabsTrigger>
           </Can>
@@ -1154,6 +1159,46 @@ export default function ProjectDetailPage() {
 
         <TabsContent value="financials" className="mt-4 space-y-4">
           <Can anyOf={FEATURE_PERMS.financials}>
+
+          {/* ── P&L Summary ─────────────────────────────────────────── */}
+          {(() => {
+            const totalRevenue = view.financials.invoices.totalAmount;
+            const totalPaid = view.financials.invoices.paidAmount;
+            const totalCosts = view.financials.materials.totalCost + view.financials.labour.totalLabourCost;
+            const grossProfit = totalRevenue - totalCosts;
+            const overheadBudget = view.budget.byCategory?.find((c) => String(c.category ?? "").toUpperCase().includes("OVERHEAD"))?.actual ?? 0;
+            const netProfit = grossProfit - Number(overheadBudget);
+            const margin = totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 100) : 0;
+            return (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-primary" /> P&amp;L Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="divide-y">
+                    {[
+                      { label: "Total Revenue (Invoiced)", value: totalRevenue, sub: `${formatCurrency(totalPaid)} collected`, color: "text-primary" },
+                      { label: "Material Costs", value: -view.financials.materials.totalCost, sub: `${view.financials.materials.logs} usage logs`, color: "text-muted-foreground" },
+                      { label: "Labour Costs", value: -view.financials.labour.totalLabourCost, sub: `${view.financials.labour.regularHours}h reg + ${view.financials.labour.overtimeHours}h OT`, color: "text-muted-foreground" },
+                      { label: "Gross Profit", value: grossProfit, sub: `${margin}% margin`, color: grossProfit >= 0 ? "text-emerald-600" : "text-destructive", bold: true },
+                      { label: "Outstanding Invoices", value: -view.financials.invoices.balanceAmount, sub: "Unpaid balance", color: "text-amber-600" },
+                    ].map((row) => (
+                      <div key={row.label} className="flex items-center justify-between px-4 py-3">
+                        <div>
+                          <p className={`text-sm ${row.bold ? "font-semibold" : ""}`}>{row.label}</p>
+                          {row.sub && <p className="text-[11px] text-muted-foreground">{row.sub}</p>}
+                        </div>
+                        <p className={`font-semibold ${row.color}`}>{formatCurrency(Math.abs(row.value))}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => router.push(`/quotes/new?projectId=${projectId}`)}><Plus className="mr-2 h-4 w-4" /> Create Quote</Button>
             <Button variant="outline" onClick={() => router.push(`/quotes?projectId=${projectId}`)}>View Quotes</Button>
@@ -1313,6 +1358,13 @@ export default function ProjectDetailPage() {
               )}
             </CardContent>
           </Card>
+          </Can>
+        </TabsContent>
+
+        {/* ── Transaction Ledger Tab ── */}
+        <TabsContent value="transactions" className="mt-4">
+          <Can anyOf={FEATURE_PERMS.financials}>
+          <TransactionLedger projectId={projectId} />
           </Can>
         </TabsContent>
 
@@ -2249,6 +2301,8 @@ function BudgetBreakdownLines({ projectId }: { projectId: string }) {
   const dispatch = useAppDispatch();
   const formatCurrency = useFormatCurrency();
   const { projectBudget } = useAppSelector((s) => s.financials);
+  const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     void dispatch(fetchProjectBudget(projectId));
@@ -2264,30 +2318,178 @@ function BudgetBreakdownLines({ projectId }: { projectId: string }) {
     );
   }
 
+  function statusBadge(status?: string) {
+    if (status === "OVER_BUDGET") return <Badge variant="destructive" className="text-[10px]">Over Budget</Badge>;
+    if (status === "WARNING") return <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Warning</Badge>;
+    return <Badge variant="secondary" className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">On Track</Badge>;
+  }
+
   return (
-    <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Per-category budget
-      </p>
-      <div className="divide-y rounded-md border">
-        {lines.map((line) => {
-          const over = line.variance < 0;
-          return (
-            <div key={line.categoryId} className="flex items-center justify-between p-3">
-              <div>
-                <p className="text-sm font-medium">{line.categoryName}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Actual {formatCurrency(line.actualAmount)} of {formatCurrency(line.plannedAmount)}
-                </p>
-              </div>
-              <div className={`text-right text-sm font-semibold ${over ? "text-destructive" : "text-emerald-600"}`}>
-                {over ? "Over by " : "Under by "}
-                {formatCurrency(Math.abs(line.variance))}
-              </div>
-            </div>
-          );
-        })}
+    <>
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/30">
+              <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Category</th>
+              <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Planned</th>
+              <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Actual</th>
+              <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Remaining</th>
+              <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Variance</th>
+              <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Used</th>
+              <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {lines.map((line) => {
+              const remaining = line.plannedAmount - line.actualAmount;
+              const pct = line.percentUsed ?? (line.plannedAmount > 0 ? Math.round((line.actualAmount / line.plannedAmount) * 100) : 0);
+              const varColor = line.variance < 0 ? "text-destructive" : "text-emerald-600";
+              return (
+                <tr
+                  key={line.categoryId}
+                  className="hover:bg-muted/20 cursor-pointer"
+                  onClick={() => { setSelectedCategory({ id: line.categoryId, name: line.categoryName }); setLedgerOpen(true); }}
+                >
+                  <td className="px-3 py-2.5">
+                    <p className="font-medium">{line.categoryName}</p>
+                    <div className="mt-1 h-1.5 w-32 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full rounded-full ${pct >= 100 ? "bg-destructive" : pct >= (line.thresholdPct || 80) ? "bg-amber-500" : "bg-primary"}`}
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5 text-right">{formatCurrency(line.plannedAmount)}</td>
+                  <td className="px-3 py-2.5 text-right font-medium">{formatCurrency(line.actualAmount)}</td>
+                  <td className="px-3 py-2.5 text-right text-muted-foreground">{formatCurrency(Math.max(remaining, 0))}</td>
+                  <td className={`px-3 py-2.5 text-right font-semibold ${varColor}`}>{formatCurrency(line.variance)}</td>
+                  <td className="px-3 py-2.5 text-right text-muted-foreground">{pct}%</td>
+                  <td className="px-3 py-2.5 text-center">{statusBadge(line.status)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t bg-muted/30">
+              <td className="px-3 py-2.5 font-semibold">Total</td>
+              <td className="px-3 py-2.5 text-right font-semibold">{formatCurrency(projectBudget?.totalBudget ?? 0)}</td>
+              <td className="px-3 py-2.5 text-right font-bold text-primary">{formatCurrency(projectBudget?.totalSpent ?? 0)}</td>
+              <td className="px-3 py-2.5 text-right font-semibold">{formatCurrency(Math.max((projectBudget?.totalBudget ?? 0) - (projectBudget?.totalSpent ?? 0), 0))}</td>
+              <td className={`px-3 py-2.5 text-right font-bold ${(projectBudget?.totalBudget ?? 0) < (projectBudget?.totalSpent ?? 0) ? "text-destructive" : "text-emerald-600"}`}>
+                {formatCurrency((projectBudget?.totalBudget ?? 0) - (projectBudget?.totalSpent ?? 0))}
+              </td>
+              <td className="px-3 py-2.5 text-right font-semibold">{projectBudget?.percentUsed ?? 0}%</td>
+              <td />
+            </tr>
+          </tfoot>
+        </table>
       </div>
-    </div>
+      <p className="text-[11px] text-muted-foreground">Click any category row to view its full financial ledger.</p>
+
+      {selectedCategory && (
+        <BudgetCategoryLedgerModal
+          open={ledgerOpen}
+          onOpenChange={setLedgerOpen}
+          projectId={projectId}
+          categoryId={selectedCategory.id}
+          categoryName={selectedCategory.name}
+        />
+      )}
+    </>
+  );
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  MANUAL: "Manual Entry",
+  MATERIAL: "Material Purchase",
+  LABOUR: "Labour",
+  EQUIPMENT: "Equipment",
+  OVERHEAD: "Overhead",
+  TRANSPORT: "Transport",
+  UNEXPECTED: "Unexpected Cost",
+  OTHER: "Other",
+};
+
+function TransactionLedger({ projectId }: { projectId: string }) {
+  const dispatch = useAppDispatch();
+  const formatCurrency = useFormatCurrency();
+  const { transactions, transactionsTotal } = useAppSelector((s) => s.financials);
+  const [page, setPage] = useState(1);
+  const limit = 20;
+
+  useEffect(() => {
+    void dispatch(fetchProjectTransactions({ projectId, page, limit }));
+  }, [dispatch, projectId, page]);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Receipt className="h-4 w-4 text-muted-foreground" />
+          Transaction Ledger
+        </CardTitle>
+        <span className="text-xs text-muted-foreground">{transactionsTotal} total</span>
+      </CardHeader>
+      <CardContent className="p-0">
+        {transactions.length === 0 ? (
+          <p className="px-6 py-10 text-center text-sm text-muted-foreground">No transactions recorded yet.</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Date</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Description</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Category</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Source</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Vendor</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Ref</th>
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {transactions.map((tx) => (
+                    <tr key={tx.id} className="hover:bg-muted/20">
+                      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                        {new Date(tx.occurredAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <p>{tx.description}</p>
+                        {tx.notes && <p className="text-xs text-muted-foreground">{tx.notes}</p>}
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{tx.category?.name ?? "—"}</td>
+                      <td className="px-4 py-2.5">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {SOURCE_LABELS[tx.sourceType] ?? tx.sourceType}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{tx.vendor ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground text-xs">{tx.reference ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(Number(tx.amount))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {transactionsTotal > limit && (
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <span className="text-xs text-muted-foreground">
+                  Page {page} of {Math.ceil(transactionsTotal / limit)}
+                </span>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={page >= Math.ceil(transactionsTotal / limit)} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
