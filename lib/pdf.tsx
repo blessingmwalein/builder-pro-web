@@ -295,7 +295,7 @@ function normalizeCompany(tenant: Tenant | null, docPartyName?: string | null): 
   }
 
   return {
-    displayName: docPartyName || "Builder Pro",
+    displayName: docPartyName || "ownit2buildit",
     defaultCurrency: "USD",
     accountType: "INDIVIDUAL",
   };

@@ -95,7 +95,7 @@ function ReportPage({ title, date, children }: { title: string; date: string; ch
       </View>
       {children}
       <View style={S.footer} fixed>
-        <Text style={S.footerText}>BuilderPro — Confidential</Text>
+        <Text style={S.footerText}>ownit2buildit — Confidential</Text>
         <Text style={S.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
       </View>
     </Page>
@@ -110,7 +110,7 @@ function CoverPage({ reportTitle, companyName, dateFrom, dateTo, generatedBy }: 
 }) {
   return (
     <Page size="A4" style={S.coverPage}>
-      <Text style={S.coverLogo}>BuilderPro</Text>
+      <Text style={S.coverLogo}>ownit2buildit</Text>
       <Text style={S.coverSubtitle}>{companyName}</Text>
       <View style={S.coverDivider} />
       <Text style={S.coverTitle}>{reportTitle}</Text>

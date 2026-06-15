@@ -12,8 +12,8 @@ const footerLinks = {
     { label: "Careers", href: "#" },
   ],
   Legal: [
-    { label: "Privacy Policy", href: "#" },
-    { label: "Terms of Service", href: "#" },
+    { label: "Privacy Policy", href: "/privacy-policy" },
+    { label: "Terms of Service", href: "/terms-of-service" },
   ],
 };
 
@@ -35,8 +35,7 @@ export function Footer() {
               </span>
             </Link>
             <p className="mt-3 text-sm text-muted-foreground leading-relaxed max-w-xs">
-              Construction project management, simplified. Built for Zimbabwe
-              & Southern Africa.
+              Construction project management, simplified. Built for you.
             </p>
           </div>
 
@@ -64,7 +63,7 @@ export function Footer() {
 
         <div className="mt-12 flex flex-col items-center gap-4 border-t border-border pt-8 md:flex-row md:justify-between">
           <p className="text-xs text-muted-foreground">
-            &copy; 2026 ownit2buildit. Built for Zimbabwe & Southern Africa.
+            &copy; 2026 ownit2buildit. Built for you.
           </p>
           <p className="text-xs text-muted-foreground">
             All rights reserved.

@@ -8,8 +8,8 @@ import { motion } from "framer-motion";
 
 const highlights = [
   "No credit card required",
-  "Free starter plan",
-  "Built for Southern Africa",
+  "14-day free trial",
+  "Per-person pricing",
 ];
 
 export function Hero() {

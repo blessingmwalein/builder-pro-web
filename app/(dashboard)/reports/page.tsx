@@ -187,7 +187,7 @@ export default function ReportsPage() {
     try {
       const { downloadReportPDF } = await import("@/lib/report-pdf");
       await downloadReportPDF(selectedType, reportData, {
-        companyName: tenant?.name ?? "BuilderPro",
+        companyName: tenant?.name ?? "ownit2buildit",
         generatedBy: user ? `${user.firstName} ${user.lastName}` : "User",
         dateFrom,
         dateTo,
