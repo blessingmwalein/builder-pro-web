@@ -1,4 +1,4 @@
-import { Building2 } from "lucide-react";
+import Image from "next/image";
 
 function DecorativeWaves({ className }: { className?: string }) {
   return (
@@ -45,11 +45,14 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         {/* Decorative background shapes */}
         <DecorativeWaves className="absolute inset-0 h-full w-full pointer-events-none" />
 
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary">
-            <Building2 className="h-6 w-6 text-sidebar-primary-foreground" />
-          </div>
-          <span className="text-xl font-bold tracking-tight">ownit2buildit</span>
+        <div className="relative z-10">
+          <Image
+            src="/logo.png"
+            alt="Ownit2Buildit"
+            width={180}
+            height={72}
+            className="h-36 w-auto object-contain brightness-0 invert"
+          />
         </div>
 
         <div className="relative z-10 space-y-6">

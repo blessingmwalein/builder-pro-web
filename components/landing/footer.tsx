@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 const footerLinks = {
   Product: [
@@ -24,15 +25,14 @@ export function Footer() {
         <div className="grid gap-8 md:grid-cols-4">
           {/* Brand */}
           <div>
-            <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <span className="text-xs font-bold text-primary-foreground">
-                  O2B
-                </span>
-              </div>
-              <span className="text-base font-bold text-foreground">
-                ownit2buildit
-              </span>
+            <Link href="/" className="flex items-center">
+              <Image
+                src="/logo.png"
+                alt="Ownit2Buildit"
+                width={200}
+                height={80}
+                className="h-20 w-auto object-contain"
+              />
             </Link>
             <p className="mt-3 text-sm text-muted-foreground leading-relaxed max-w-xs">
               Construction project management, simplified. Built for you.

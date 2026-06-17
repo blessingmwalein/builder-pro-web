@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Building2 } from "lucide-react";
+import Image from "next/image";
 import { api, setTokens, setTenantSlug } from "@/lib/api";
 import type {
   AccountType,
@@ -245,11 +245,8 @@ export default function RegisterPage() {
   return (
     <div className="mx-auto w-full max-w-2xl">
       {/* Mobile logo */}
-      <div className="mb-8 flex items-center gap-3 lg:hidden">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-          <Building2 className="h-6 w-6 text-primary-foreground" />
-        </div>
-        <span className="text-xl font-bold">ownit2buildit</span>
+      <div className="mb-8 flex items-center lg:hidden">
+        <Image src="/logo.png" alt="Ownit2Buildit" width={400} height={160} className="h-40 w-auto object-contain" />
       </div>
 
       <Card className="border-0 shadow-none lg:border lg:shadow-sm">

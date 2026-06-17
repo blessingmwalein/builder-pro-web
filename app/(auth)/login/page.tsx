@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building2, Loader2, Eye, EyeOff } from "lucide-react";
+import Image from "next/image";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { loginSchema, type LoginFormData } from "@/lib/validations";
 import { useAppDispatch } from "@/lib/hooks";
 import { login } from "@/store/slices/authSlice";
@@ -35,11 +36,23 @@ export default function LoginPage() {
       await dispatch(login(data)).unwrap();
       router.push("/dashboard");
     } catch (err: unknown) {
+      // rejectWithValue payload: { status, message, code }
+      if (typeof err === "object" && err !== null && "status" in err) {
+        const e = err as { status: number; message?: string };
+        if (e.status === 402) {
+          router.push("/subscription");
+          return;
+        }
+        setError(e.message || "Invalid credentials. Please try again.");
+        return;
+      }
       if (err instanceof ApiError && err.status === 402) {
         router.push("/subscription");
         return;
       }
-      const message = err instanceof Error ? err.message : "Invalid credentials. Please try again.";
+      const message =
+        (err as { message?: string })?.message ||
+        "Invalid credentials. Please try again.";
       setError(message);
     }
   }
@@ -47,11 +60,8 @@ export default function LoginPage() {
   return (
     <div className="mx-auto w-full max-w-md">
       {/* Mobile-only logo */}
-      <div className="mb-8 flex items-center gap-3 lg:hidden">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-          <Building2 className="h-6 w-6 text-primary-foreground" />
-        </div>
-        <span className="text-xl font-bold">ownit2buildit</span>
+      <div className="mb-8 flex items-center lg:hidden">
+        <Image src="/logo.png" alt="Ownit2Buildit" width={400} height={160} className="h-40 w-auto object-contain" />
       </div>
 
       <Card className="border-0 shadow-none lg:border lg:shadow-sm">
