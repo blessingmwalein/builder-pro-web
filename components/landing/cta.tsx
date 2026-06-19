@@ -29,7 +29,7 @@ export function CTA() {
               className="bg-primary-foreground text-primary hover:bg-primary-foreground/90 px-8 text-base font-semibold"
               asChild
             >
-              <Link href="#pricing">
+              <Link href="/register">
                 Start Your Free Trial
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>

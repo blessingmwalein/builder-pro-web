@@ -14,8 +14,8 @@ import type {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { PaymentModal } from "@/components/shared/payment-modal";
+import { cn } from "@/lib/utils";
 
 type OnboardingPlan = Plan & {
   targetAccountType: AccountType | null;
@@ -41,11 +41,6 @@ function toMoney(value: string | number): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function formatUnlimited(value: number | undefined): string {
-  if (value == null) return "-";
-  if (value < 0) return "Unlimited";
-  return String(value);
-}
 
 export default function SubscriptionPage() {
   const router = useRouter();
@@ -176,13 +171,16 @@ export default function SubscriptionPage() {
       </div>
 
       {/* Horizontal plans grid */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-3">
         {visiblePlans.map((plan, idx) => {
           const isSelected = selectedPlan === plan.code;
+          const isPopular = plan.code === "TEAM";
           const price =
             billingCycle === "ANNUAL"
-              ? toMoney(plan.annualPrice)
+              ? toMoney(plan.annualPrice) / 12
               : toMoney(plan.monthlyPrice);
+          const cap = (plan.limits.maxUsers ?? 0) > 0 ? plan.limits.maxUsers : 50;
+          const totalMax = price * cap;
           const isEnterprise = plan.code === "ENTERPRISE";
           const isRecommended = idx === Math.floor(visiblePlans.length / 2);
 
@@ -190,10 +188,19 @@ export default function SubscriptionPage() {
             <Card
               key={plan.id}
               onClick={() => setSelectedPlan(plan.code)}
-              className={`flex cursor-pointer flex-col transition-all ${
-                isSelected ? "ring-2 ring-primary shadow-md" : "hover:border-primary/40"
-              } ${isRecommended ? "border-primary/50" : ""}`}
+              className={cn(
+                "relative flex cursor-pointer flex-col transition-all",
+                isSelected
+                  ? "ring-2 ring-primary shadow-md"
+                  : "hover:border-primary/40",
+                isPopular ? "border-primary shadow-xl shadow-primary/10 scale-[1.02]" : ""
+              )}
             >
+              {isPopular && (
+                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3">
+                  Most Popular
+                </Badge>
+              )}
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -201,53 +208,53 @@ export default function SubscriptionPage() {
                     {plan.name}
                   </CardTitle>
                   <div className="flex items-center gap-1.5">
-                    {isRecommended && <Badge className="text-xs">Recommended</Badge>}
+                    {isRecommended && !isPopular && <Badge variant="outline" className="text-xs">Recommended</Badge>}
                     {isSelected && <Check className="h-4 w-4 text-primary" />}
                   </div>
                 </div>
                 {plan.description && <CardDescription>{plan.description}</CardDescription>}
               </CardHeader>
               <CardContent className="flex flex-1 flex-col gap-4">
+                {/* Per-person price */}
                 <div>
-                  <span className="text-3xl font-bold">${price.toFixed(0)}</span>
-                  <span className="text-sm text-muted-foreground">
-                    /{billingCycle === "ANNUAL" ? "year" : "month"}
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-bold">
+                      ${price % 1 === 0 ? price.toFixed(0) : price.toFixed(2)}
+                    </span>
+                    <span className="text-sm text-muted-foreground">/person/month</span>
+                  </div>
+                  {billingCycle === "ANNUAL" && (
+                    <p className="mt-0.5 text-xs text-primary font-medium">
+                      ${toMoney(plan.annualPrice).toFixed(0)}/person/year — 2 months free
+                    </p>
+                  )}
+                </div>
+
+                {/* User cap + max total */}
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Users className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Up to {cap} users · max{" "}
+                    <span className="text-foreground font-medium">
+                      ${totalMax % 1 === 0 ? totalMax.toFixed(0) : totalMax.toFixed(2)}/month
+                    </span>
                   </span>
                 </div>
-
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="rounded-md bg-muted px-2 py-1.5 text-center">
-                    <p className="text-muted-foreground">Users</p>
-                    <p className="font-semibold">{formatUnlimited(plan.limits.maxUsers)}</p>
-                  </div>
-                  <div className="rounded-md bg-muted px-2 py-1.5 text-center">
-                    <p className="text-muted-foreground">Projects</p>
-                    <p className="font-semibold">{formatUnlimited(plan.limits.maxProjects)}</p>
-                  </div>
-                  <div className="rounded-md bg-muted px-2 py-1.5 text-center">
-                    <p className="text-muted-foreground">Storage</p>
-                    <p className="font-semibold">{formatUnlimited(plan.limits.storageGb)} GB</p>
-                  </div>
-                </div>
-
-                <Separator />
 
                 <ul className="flex-1 space-y-1.5 text-xs">
-                  {(plan.features ?? []).map((feature) => (
-                    <li key={feature} className="flex items-start gap-2">
-                      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
+                  {(plan.features ?? [])
+                    .filter(
+                      (f) =>
+                        !/^Up to \d+ users/i.test(f) &&
+                        !/max \$[\d,]+\/month/i.test(f)
+                    )
+                    .map((feature) => (
+                      <li key={feature} className="flex items-start gap-2">
+                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
                 </ul>
-
-                <div className="rounded-md border border-dashed bg-muted/40 p-3 text-xs text-muted-foreground flex gap-2">
-                  <Users className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>
-                    Need more seats than your plan allows? Reach out to your account
-                    admin to discuss adding extra users.
-                  </span>
-                </div>
               </CardContent>
             </Card>
           );

@@ -42,6 +42,7 @@ type WizardData = {
   businessPhone: string;
   businessEmail: string;
   city: string;
+  teamSize: string;
   // individual profile
   businessName: string;
   primarySector: string;
@@ -72,6 +73,7 @@ const INITIAL_DATA: WizardData = {
   businessPhone: "",
   businessEmail: "",
   city: "",
+  teamSize: "",
   businessName: "",
   primarySector: "",
   businessSize: "",
@@ -152,6 +154,7 @@ export default function RegisterPage() {
           businessPhone: data.businessPhone || undefined,
           businessEmail: data.businessEmail || undefined,
           city: data.city || undefined,
+          teamSize: data.teamSize ? Number(data.teamSize) : undefined,
         });
       } else {
         Object.assign(payload, {
@@ -166,6 +169,7 @@ export default function RegisterPage() {
           city: data.city || undefined,
           registrationNumber: data.registrationNumber || undefined,
           taxNumber: data.taxNumber || undefined,
+          teamSize: data.teamSize ? Number(data.teamSize) : undefined,
         });
       }
 

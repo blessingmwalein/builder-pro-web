@@ -15,6 +15,7 @@ type WizardData = {
   businessName: string; primarySector: string; businessSize: string; serviceAreas: string[];
   selectedSectors: string[]; selectedProjectTypes: string[];
   selectedStakeholders: string[]; selectedWorkflows: string[];
+  teamSize: string;
 };
 
 interface StepProps {

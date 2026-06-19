@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import Image from "next/image";
 import {
   Layers,
   TrendingUp,
@@ -8,7 +10,7 @@ import {
   Clock,
   ShieldCheck,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 const features = [
   {
@@ -49,12 +51,55 @@ const features = [
   },
 ];
 
+const screenshots = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    src: "/screens/dashboard.png",
+    caption: "Live overview of all your projects, budgets, and team activity in one place.",
+  },
+  {
+    id: "projects",
+    label: "Projects",
+    src: "/screens/project.png",
+    caption: "Manage every project stage, task, and milestone from a single screen.",
+  },
+  {
+    id: "budget",
+    label: "Budget",
+    src: "/screens/proeject_budget.png",
+    caption: "Real-time budget tracking with planned vs actual per category and stage.",
+  },
+  {
+    id: "tasks",
+    label: "Tasks",
+    src: "/screens/tasks.png",
+    caption: "Assign tasks, set deadlines, and track progress across your whole team.",
+  },
+  {
+    id: "gantt",
+    label: "Gantt Chart",
+    src: "/screens/tasks-ganntt.png",
+    caption: "Visual Gantt timeline keeps your schedule on track at a glance.",
+  },
+  {
+    id: "quotes",
+    label: "Quotes",
+    src: "/screens/quote_creating.png",
+    caption: "Generate professional quotes aligned with fiscal templates in seconds.",
+  },
+  {
+    id: "reports",
+    label: "Reports",
+    src: "/screens/reports_generator.png",
+    caption: "One-click financial and project reports — always audit-ready.",
+  },
+];
+
 const containerVariants = {
   hidden: {},
   visible: {
-    transition: {
-      staggerChildren: 0.1,
-    },
+    transition: { staggerChildren: 0.1 },
   },
 };
 
@@ -64,9 +109,12 @@ const itemVariants = {
 };
 
 export function Features() {
+  const [activeScreen, setActiveScreen] = useState(0);
+
   return (
     <section id="features" className="py-20 md:py-28 bg-card">
       <div className="mx-auto max-w-7xl px-6">
+        {/* Header */}
         <div className="mx-auto max-w-2xl text-center mb-16">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary mb-3">
             Features
@@ -79,6 +127,7 @@ export function Features() {
           </p>
         </div>
 
+        {/* Feature cards */}
         <motion.div
           variants={containerVariants}
           initial="hidden"
@@ -103,6 +152,87 @@ export function Features() {
               </p>
             </motion.div>
           ))}
+        </motion.div>
+
+        {/* Screenshot showcase */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="mt-24"
+        >
+          <div className="text-center mb-10">
+            <p className="text-sm font-semibold uppercase tracking-widest text-primary mb-3">
+              See it in action
+            </p>
+            <h3 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+              A real look at the platform
+            </h3>
+            <p className="mt-3 text-muted-foreground">
+              Tap any section below to see exactly what your team will be working with.
+            </p>
+          </div>
+
+          {/* Tab strip */}
+          <div className="flex flex-wrap justify-center gap-2 mb-8">
+            {screenshots.map((s, i) => (
+              <button
+                key={s.id}
+                onClick={() => setActiveScreen(i)}
+                className={[
+                  "rounded-full px-4 py-1.5 text-sm font-medium transition-all",
+                  activeScreen === i
+                    ? "bg-primary text-primary-foreground shadow-md"
+                    : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80",
+                ].join(" ")}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Screenshot frame */}
+          <div className="relative mx-auto max-w-5xl">
+            {/* Browser chrome */}
+            <div className="rounded-t-xl border border-border bg-muted px-4 py-3 flex items-center gap-2">
+              <div className="flex gap-1.5">
+                <div className="h-3 w-3 rounded-full bg-red-400/70" />
+                <div className="h-3 w-3 rounded-full bg-yellow-400/70" />
+                <div className="h-3 w-3 rounded-full bg-green-400/70" />
+              </div>
+              <div className="mx-4 flex-1 rounded-md bg-background/60 px-3 py-1 text-xs text-muted-foreground truncate">
+                app.ownit2buildit.com / {screenshots[activeScreen].id}
+              </div>
+            </div>
+
+            {/* Screenshot area */}
+            <div className="relative overflow-hidden rounded-b-xl border-x border-b border-border bg-background shadow-2xl shadow-primary/5">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeScreen}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.25, ease: "easeInOut" }}
+                >
+                  <Image
+                    src={screenshots[activeScreen].src}
+                    alt={screenshots[activeScreen].label}
+                    width={1280}
+                    height={720}
+                    className="w-full h-auto"
+                    priority={activeScreen === 0}
+                  />
+                </motion.div>
+              </AnimatePresence>
+            </div>
+
+            {/* Caption */}
+            <p className="mt-4 text-center text-sm text-muted-foreground">
+              {screenshots[activeScreen].caption}
+            </p>
+          </div>
         </motion.div>
       </div>
     </section>

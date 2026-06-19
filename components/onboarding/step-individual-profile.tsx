@@ -24,6 +24,7 @@ type WizardData = {
   businessName: string; primarySector: string; businessSize: string; serviceAreas: string[];
   selectedSectors: string[]; selectedProjectTypes: string[];
   selectedStakeholders: string[]; selectedWorkflows: string[];
+  teamSize: string;
 };
 
 interface StepProps {
@@ -232,6 +233,23 @@ export function StepIndividualProfile({ data, onChange, onNext, onBack, isLoadin
             placeholder="e.g. 2012345678"
           />
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="teamSize">
+          Number of Users / Seats <span className="text-destructive">*</span>
+        </Label>
+        <Input
+          id="teamSize"
+          type="number"
+          min={1}
+          value={data.teamSize}
+          onChange={(e) => onChange({ teamSize: e.target.value })}
+          placeholder="e.g. 2"
+        />
+        <p className="text-xs text-muted-foreground">
+          How many people will use the platform? This determines your monthly billing.
+        </p>
       </div>
 
       <div className="flex gap-3">

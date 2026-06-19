@@ -77,7 +77,7 @@ export function Pricing() {
           </p>
         </div>
 
-        {/* How it works callout */}
+        {/* How it works callout — example uses actual TEAM plan price once loaded */}
         <div className="mx-auto max-w-2xl mb-10 rounded-xl border border-primary/20 bg-primary/5 px-5 py-4">
           <div className="flex items-start gap-3">
             <Users className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
@@ -85,12 +85,25 @@ export function Pricing() {
               <span className="font-semibold text-foreground">
                 How per-person pricing works:
               </span>{" "}
-              You pick a plan and add your team. You're billed per person, per
-              month. A Team plan with 6 users costs{" "}
-              <span className="text-foreground font-medium">
-                6 × $19 = $114/month
-              </span>
-              . Scale up or down any time within your plan&apos;s user cap.
+              You pick a plan and add your team. You&apos;re billed per person, per
+              month.{" "}
+              {(() => {
+                const teamPlan = plans.find((p) => p.code === "TEAM");
+                if (!teamPlan) return null;
+                const price = Number(teamPlan.monthlyPrice);
+                const example = 6;
+                const total = example * price;
+                return (
+                  <>
+                    A {teamPlan.name} plan with {example} users costs{" "}
+                    <span className="text-foreground font-medium">
+                      {example} × ${price % 1 === 0 ? price.toFixed(0) : price.toFixed(2)} = ${total % 1 === 0 ? total.toFixed(0) : total.toFixed(2)}/month
+                    </span>
+                    .
+                  </>
+                );
+              })()}
+              {" "}Scale up or down any time within your plan&apos;s user cap.
             </div>
           </div>
         </div>
@@ -196,7 +209,13 @@ export function Pricing() {
                     </div>
 
                     <ul className="mb-6 flex-1 flex flex-col gap-2.5">
-                      {plan.features.map((feature) => (
+                      {plan.features
+                        .filter(
+                          (f) =>
+                            !/^Up to \d+ users/i.test(f) &&
+                            !/max \$[\d,]+\/month/i.test(f)
+                        )
+                        .map((feature) => (
                         <li
                           key={feature}
                           className="flex items-start gap-2 text-sm text-foreground"
